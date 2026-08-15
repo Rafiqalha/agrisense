@@ -1,0 +1,31 @@
+[package]
+name        = "platform-service"
+version.workspace     = true
+edition.workspace     = true
+authors.workspace     = true
+
+[[bin]]
+name = "platform-service"
+path = "src/main.rs"
+
+[dependencies]
+tokio        = { workspace = true }
+axum         = { workspace = true }
+tower-http   = { workspace = true }
+serde        = { workspace = true }
+serde_json   = { workspace = true }
+async-trait  = { workspace = true }
+anyhow       = { workspace = true }
+thiserror    = { workspace = true }
+tracing      = { workspace = true }
+uuid         = { workspace = true }
+chrono       = { workspace = true }
+async-nats   = { workspace = true }
+config       = { workspace = true }
+dotenvy      = { workspace = true }
+
+shared-types         = { workspace = true }
+shared-events        = { workspace = true }
+shared-db            = { workspace = true }
+shared-cache         = { workspace = true }
+shared-observability = { workspace = true }

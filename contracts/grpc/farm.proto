@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package agrisense.farm.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/agrisense/agrisense/contracts/grpc/farm/v1";
+
+service FarmService {
+  rpc GetFarm(GetFarmRequest) returns (Farm);
+  rpc ListFarmerFarms(ListFarmerFarmsRequest) returns (ListFarmerFarmsResponse);
+  rpc GetCropStatus(GetCropStatusRequest) returns (CropStatus);
+  rpc RecordActivity(RecordActivityRequest) returns (RecordActivityResponse);
+}
+
+message GetFarmRequest {
+  string farm_id = 1;
+}
+
+message ListFarmerFarmsRequest {
+  string farmer_id = 1;
+  int32 page = 2;
+  int32 limit = 3;
+}
+
+message Farm {
+  string id = 1;
+  string farmer_id = 2;
+  string name = 3;
+  double latitude = 4;
+  double longitude = 5;
+  double area_hectares = 6;
+  string size_category = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+
+message ListFarmerFarmsResponse {
+  repeated Farm farms = 1;
+  int32 total = 2;
+}
+
+message GetCropStatusRequest {
+  string crop_id = 1;
+}
+
+message CropStatus {
+  string crop_id = 1;
+  string farm_id = 2;
+  string crop_type = 3;
+  string status = 4;
+  double area_hectares = 5;
+  google.protobuf.Timestamp planted_at = 6;
+  google.protobuf.Timestamp expected_harvest_at = 7;
+}
+
+message RecordActivityRequest {
+  string farm_id = 1;
+  string crop_id = 2;
+  string activity_type = 3;
+  string description = 4;
+  double quantity = 5;
+  string unit = 6;
+}
+
+message RecordActivityResponse {
+  string activity_id = 1;
+}

@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package agrisense.agronomy.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/agrisense/agrisense/proto/agronomy/v1";
+
+enum SeverityLevel {
+  SEVERITY_UNSPECIFIED = 0;
+  SEVERITY_LOW         = 1;
+  SEVERITY_MEDIUM      = 2;
+  SEVERITY_HIGH        = 3;
+  SEVERITY_CRITICAL    = 4;
+}
+
+enum DetectionMethod {
+  DETECTION_UNSPECIFIED   = 0;
+  DETECTION_VISION_AI     = 1;
+  DETECTION_TEXT          = 2;
+  DETECTION_MANUAL_REPORT = 3;
+}
+
+message DiseaseDetected {
+  string detection_id      = 1;
+  string disease_id        = 2;
+  string farm_id           = 3;
+  string farmer_id         = 4;
+  string disease_name      = 5;
+  string crop_type         = 6;
+  SeverityLevel severity   = 7;
+  float confidence_score   = 8;
+  DetectionMethod method   = 9;
+  optional string image_url = 10;
+  google.protobuf.Timestamp occurred_at = 11;
+}
+
+message RecommendationGiven {
+  string recommendation_id       = 1;
+  string farmer_id               = 2;
+  string farm_id                 = 3;
+  string trigger                 = 4;
+  repeated string product_names  = 5;
+  string dosage_instructions     = 6;
+  google.protobuf.Timestamp occurred_at = 7;
+}
+
+message AgronomyEvent {
+  string event_id       = 1;
+  string source         = 2;
+  string correlation_id = 3;
+  google.protobuf.Timestamp occurred_at = 4;
+
+  oneof payload {
+    DiseaseDetected     disease_detected     = 10;
+    RecommendationGiven recommendation_given = 11;
+  }
+}

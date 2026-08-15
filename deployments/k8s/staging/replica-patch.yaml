@@ -1,0 +1,7 @@
+# Staging: single replica per service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: brain-service
+spec:
+  replicas: 1

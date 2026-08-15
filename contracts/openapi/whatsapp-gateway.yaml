@@ -1,0 +1,53 @@
+openapi: "3.1.0"
+info:
+  title: AgriSense WhatsApp Gateway
+  version: "1.0.0"
+  description: Receives and validates WhatsApp Business API webhooks
+
+paths:
+  /webhook:
+    get:
+      summary: Meta webhook verification
+      parameters:
+        - name: hub.mode
+          in: query
+          schema: { type: string }
+        - name: hub.verify_token
+          in: query
+          schema: { type: string }
+        - name: hub.challenge
+          in: query
+          schema: { type: string }
+      responses:
+        "200": { description: Challenge returned }
+        "403": { description: Invalid token }
+    post:
+      summary: Receive WhatsApp message
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WhatsAppWebhook"
+      responses:
+        "200": { description: Processed }
+
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          content:
+            text/plain:
+              schema: { type: string }
+
+components:
+  schemas:
+    WhatsAppWebhook:
+      type: object
+      properties:
+        object: { type: string }
+        entry:
+          type: array
+          items:
+            type: object

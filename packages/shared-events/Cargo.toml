@@ -1,0 +1,14 @@
+[package]
+name        = "shared-events"
+version.workspace     = true
+edition.workspace     = true
+authors.workspace     = true
+
+[dependencies]
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+uuid        = { workspace = true }
+chrono      = { workspace = true }
+async-nats  = { workspace = true }
+shared-types = { workspace = true }
+thiserror   = { workspace = true }

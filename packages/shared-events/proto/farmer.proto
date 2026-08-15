@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package agrisense.farmer.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option java_package = "id.agrisense.proto.farmer.v1";
+option go_package = "github.com/agrisense/agrisense/proto/farmer/v1";
+
+// ─── Messages ─────────────────────────────────────────────────────────────────
+
+message FarmerCreated {
+  string farmer_id   = 1;
+  string name        = 2;
+  string phone       = 3;
+  string region      = 4;
+  optional string referral_source = 5;
+  google.protobuf.Timestamp occurred_at = 6;
+}
+
+message FarmerVerified {
+  string farmer_id            = 1;
+  string verification_method  = 2;
+  google.protobuf.Timestamp verified_at = 3;
+}
+
+message FarmerSuspended {
+  string farmer_id   = 1;
+  string reason      = 2;
+  string suspended_by = 3;
+  google.protobuf.Timestamp occurred_at = 4;
+}
+
+// ─── Event Envelope ───────────────────────────────────────────────────────────
+
+message FarmerEvent {
+  string event_id        = 1;
+  string source          = 2;
+  string correlation_id  = 3;
+  google.protobuf.Timestamp occurred_at = 4;
+
+  oneof payload {
+    FarmerCreated   farmer_created   = 10;
+    FarmerVerified  farmer_verified  = 11;
+    FarmerSuspended farmer_suspended = 12;
+  }
+}

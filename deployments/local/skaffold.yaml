@@ -1,0 +1,31 @@
+apiVersion: skaffold/v4beta6
+kind: Config
+metadata:
+  name: agrisense
+
+build:
+  local:
+    push: false
+  artifacts:
+    - image: agrisense/brain-service
+      docker:
+        dockerfile: services/brain-service/Dockerfile
+    - image: agrisense/whatsapp-gateway
+      docker:
+        dockerfile: apps/whatsapp-gateway/Dockerfile
+
+deploy:
+  kubectl:
+    manifests:
+      - deployments/k8s/base/brain/*.yaml
+      - deployments/k8s/base/gateway/*.yaml
+
+portForward:
+  - resourceType: service
+    resourceName: brain-service
+    port: 3002
+    localPort: 3002
+  - resourceType: service
+    resourceName: whatsapp-gateway
+    port: 3001
+    localPort: 3001

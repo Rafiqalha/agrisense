@@ -1,0 +1,17 @@
+# Production: higher resource limits
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: brain-service
+spec:
+  template:
+    spec:
+      containers:
+        - name: brain-service
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"

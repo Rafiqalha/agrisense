@@ -1,0 +1,13 @@
+[package]
+name        = "shared-cache"
+version.workspace     = true
+edition.workspace     = true
+authors.workspace     = true
+
+[dependencies]
+redis        = { workspace = true }
+serde        = { workspace = true }
+serde_json   = { workspace = true }
+tokio        = { workspace = true }
+thiserror    = { workspace = true }
+tracing      = { workspace = true }

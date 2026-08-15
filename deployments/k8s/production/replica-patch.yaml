@@ -1,0 +1,28 @@
+# Production: HA replicas for critical services
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: brain-service
+spec:
+  replicas: 3
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: farm-service
+spec:
+  replicas: 2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agronomy-service
+spec:
+  replicas: 2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whatsapp-gateway
+spec:
+  replicas: 3

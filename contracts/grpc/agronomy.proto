@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package agrisense.agronomy.v1;
+
+option go_package = "github.com/agrisense/agrisense/contracts/grpc/agronomy/v1";
+
+service AgronomyService {
+  rpc DetectDisease(DetectDiseaseRequest) returns (DetectDiseaseResponse);
+  rpc GetRecommendation(GetRecommendationRequest) returns (Recommendation);
+  rpc SearchDiseases(SearchDiseasesRequest) returns (SearchDiseasesResponse);
+}
+
+message DetectDiseaseRequest {
+  string farmer_id = 1;
+  string farm_id = 2;
+  string crop_type = 3;
+  string image_url = 4;
+  string description = 5;
+}
+
+message DetectDiseaseResponse {
+  string detection_id = 1;
+  string disease_id = 2;
+  string disease_name = 3;
+  float confidence_score = 4;
+  string severity = 5;
+  Recommendation recommendation = 6;
+}
+
+message GetRecommendationRequest {
+  string detection_id = 1;
+  string farmer_id = 2;
+}
+
+message Recommendation {
+  string recommendation_id = 1;
+  repeated string product_names = 2;
+  string dosage_instructions = 3;
+  string application_method = 4;
+  int32 follow_up_days = 5;
+}
+
+message SearchDiseasesRequest {
+  string query = 1;
+  string crop_type = 2;
+  int32 limit = 3;
+}
+
+message SearchDiseasesResponse {
+  repeated DiseaseResult results = 1;
+}
+
+message DiseaseResult {
+  string disease_id = 1;
+  string name = 2;
+  float similarity_score = 3;
+  string treatment_summary = 4;
+}

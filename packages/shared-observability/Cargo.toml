@@ -1,0 +1,14 @@
+[package]
+name        = "shared-observability"
+version.workspace     = true
+edition.workspace     = true
+authors.workspace     = true
+
+[dependencies]
+tracing                     = { workspace = true }
+tracing-subscriber          = { workspace = true }
+opentelemetry               = { workspace = true }
+opentelemetry-otlp          = { workspace = true }
+tracing-opentelemetry       = { workspace = true }
+metrics                     = { workspace = true }
+metrics-exporter-prometheus = { workspace = true }

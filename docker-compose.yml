@@ -1,0 +1,259 @@
+services:
+  # ─── Core Infrastructure ──────────────────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: agrisense-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: agrisense
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: agrisense
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/schemas:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agrisense -d agrisense"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: agrisense-redis
+    restart: unless-stopped
+    command: redis-server /usr/local/etc/redis/redis.conf
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+      - ./infrastructure/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: agrisense-nats
+    restart: unless-stopped
+    command: ["-c", "/etc/nats/nats-server.conf"]
+    ports:
+      - "4222:4222"   # client
+      - "8222:8222"   # monitoring HTTP
+      - "6222:6222"   # cluster
+    volumes:
+      - nats-data:/data
+      - ./infrastructure/nats/nats-server.conf:/etc/nats/nats-server.conf:ro
+    healthcheck:
+      test: ["CMD", "nats-server", "--version"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Rust Services ────────────────────────────────────────────────────────────
+  brain-service:
+    build:
+      context: .
+      dockerfile: services/brain-service/Dockerfile
+    container_name: agrisense-brain
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - APP_ENV=development
+    ports:
+      - "3002:3002"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+      nats:     { condition: service_healthy }
+    profiles: ["services", "all"]
+
+  farm-service:
+    build:
+      context: .
+      dockerfile: services/farm-service/Dockerfile
+    container_name: agrisense-farm
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "3003:3003"
+    depends_on:
+      postgres: { condition: service_healthy }
+      nats:     { condition: service_healthy }
+    profiles: ["services", "all"]
+
+  agronomy-service:
+    build:
+      context: .
+      dockerfile: services/agronomy-service/Dockerfile
+    container_name: agrisense-agronomy
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "3004:3004"
+    depends_on:
+      postgres: { condition: service_healthy }
+      nats:     { condition: service_healthy }
+    profiles: ["services", "all"]
+
+  finance-service:
+    build:
+      context: .
+      dockerfile: services/finance-service/Dockerfile
+    container_name: agrisense-finance
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "3005:3005"
+    depends_on:
+      postgres: { condition: service_healthy }
+      nats:     { condition: service_healthy }
+    profiles: ["services", "all"]
+
+  marketplace-service:
+    build:
+      context: .
+      dockerfile: services/marketplace-service/Dockerfile
+    container_name: agrisense-marketplace
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "3006:3006"
+    depends_on:
+      postgres: { condition: service_healthy }
+      nats:     { condition: service_healthy }
+    profiles: ["services", "all"]
+
+  analytics-service:
+    build:
+      context: .
+      dockerfile: services/analytics-service/Dockerfile
+    container_name: agrisense-analytics
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "3007:3007"
+    depends_on:
+      postgres: { condition: service_healthy }
+      nats:     { condition: service_healthy }
+    profiles: ["services", "all"]
+
+  ai-service:
+    build:
+      context: .
+      dockerfile: services/ai-service/Dockerfile
+    container_name: agrisense-ai
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "3008:3008"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+    profiles: ["services", "all"]
+
+  platform-service:
+    build:
+      context: .
+      dockerfile: services/platform-service/Dockerfile
+    container_name: agrisense-platform
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "3009:3009"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+      nats:     { condition: service_healthy }
+    profiles: ["services", "all"]
+
+  whatsapp-gateway:
+    build:
+      context: .
+      dockerfile: apps/whatsapp-gateway/Dockerfile
+    container_name: agrisense-gateway
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "3001:3001"
+    depends_on:
+      brain-service: { condition: service_started }
+    profiles: ["services", "all"]
+
+  # ─── Monitoring Stack ─────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: agrisense-prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    ports:
+      - "9090:9090"
+    volumes:
+      - prometheus-data:/prometheus
+      - ./infrastructure/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    profiles: ["monitoring"]
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: agrisense-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./infrastructure/monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+    depends_on:
+      - prometheus
+    profiles: ["monitoring"]
+
+  loki:
+    image: grafana/loki:3.1.0
+    container_name: agrisense-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yml
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki-data:/loki
+      - ./infrastructure/monitoring/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+    profiles: ["monitoring"]
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: agrisense-alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./infrastructure/monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    profiles: ["monitoring"]
+
+  # ─── NATS UI (local dev only) ─────────────────────────────────────────────────
+  nats-box:
+    image: natsio/nats-box:latest
+    container_name: agrisense-nats-box
+    depends_on:
+      - nats
+    profiles: ["dev-tools"]
+
+volumes:
+  postgres-data:
+  redis-data:
+  nats-data:
+  prometheus-data:
+  grafana-data:
+  loki-data:
+
+networks:
+  default:
+    name: agrisense-net

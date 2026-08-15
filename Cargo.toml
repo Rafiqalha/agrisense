@@ -1,0 +1,102 @@
+[workspace]
+resolver = "2"
+
+members = [
+    # ── Apps ──────────────────────────────────────────────────────────────────
+    "apps/whatsapp-gateway",
+
+    # ── Services ──────────────────────────────────────────────────────────────
+    "services/brain-service",
+    "services/farm-service",
+    "services/agronomy-service",
+    "services/finance-service",
+    "services/marketplace-service",
+    "services/analytics-service",
+    "services/ai-service",
+    "services/platform-service",
+
+    # ── Packages (shared crates) ───────────────────────────────────────────────
+    "packages/shared-types",
+    "packages/shared-events",
+    "packages/shared-auth",
+    "packages/shared-db",
+    "packages/shared-cache",
+    "packages/shared-observability",
+    "packages/shared-mcp",
+]
+
+[workspace.package]
+version     = "0.1.0"
+edition     = "2021"
+authors     = ["AgriSense Team <eng@agrisense.id>"]
+license     = "UNLICENSED"
+repository  = "https://github.com/agrisense/agrisense"
+
+[workspace.dependencies]
+# ── Async Runtime ────────────────────────────────────────────────────────────
+tokio        = { version = "1", features = ["full"] }
+async-trait  = "0.1"
+futures      = "0.3"
+
+# ── Web Framework ────────────────────────────────────────────────────────────
+axum         = { version = "0.7", features = ["macros", "multipart"] }
+tower        = { version = "0.5", features = ["full"] }
+tower-http   = { version = "0.5", features = ["cors", "trace", "compression-gzip"] }
+hyper        = { version = "1", features = ["full"] }
+
+# ── gRPC ─────────────────────────────────────────────────────────────────────
+tonic        = { version = "0.12", features = ["tls"] }
+prost        = "0.13"
+
+# ── Database ─────────────────────────────────────────────────────────────────
+sqlx         = { version = "0.8", features = ["postgres", "runtime-tokio-rustls", "uuid", "chrono", "json", "migrate"] }
+pgvector     = { version = "0.4", features = ["sqlx"] }
+
+# ── Cache / Message Bus ───────────────────────────────────────────────────────
+redis        = { version = "0.26", features = ["tokio-comp", "connection-manager"] }
+async-nats   = "0.37"
+
+# ── Serialization ────────────────────────────────────────────────────────────
+serde        = { version = "1", features = ["derive"] }
+serde_json   = "1"
+
+# ── Observability ─────────────────────────────────────────────────────────────
+tracing                    = "0.1"
+tracing-subscriber         = { version = "0.3", features = ["env-filter", "json"] }
+opentelemetry              = { version = "0.24", features = ["trace", "metrics"] }
+opentelemetry-otlp         = { version = "0.17", features = ["grpc-tonic"] }
+tracing-opentelemetry      = "0.25"
+metrics                    = "0.23"
+metrics-exporter-prometheus = "0.15"
+
+# ── Auth ─────────────────────────────────────────────────────────────────────
+jsonwebtoken = "9"
+argon2       = "0.5"
+
+# ── Types / Utils ─────────────────────────────────────────────────────────────
+uuid         = { version = "1", features = ["v4", "serde"] }
+chrono       = { version = "0.4", features = ["serde"] }
+anyhow       = "1"
+thiserror    = "1"
+config       = "0.14"
+dotenvy      = "0.15"
+reqwest      = { version = "0.12", features = ["json", "stream", "multipart"] }
+bytes        = "1"
+
+# ── Internal packages ─────────────────────────────────────────────────────────
+shared-types        = { path = "packages/shared-types" }
+shared-events       = { path = "packages/shared-events" }
+shared-auth         = { path = "packages/shared-auth" }
+shared-db           = { path = "packages/shared-db" }
+shared-cache        = { path = "packages/shared-cache" }
+shared-observability = { path = "packages/shared-observability" }
+shared-mcp          = { path = "packages/shared-mcp" }
+
+[profile.release]
+opt-level = 3
+lto       = "thin"
+codegen-units = 1
+
+[profile.dev]
+opt-level = 0
+debug     = true

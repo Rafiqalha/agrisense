@@ -1,0 +1,65 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: 'development'
+    project: 'agrisense'
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+rule_files:
+  - "alerts/*.yml"
+
+scrape_configs:
+  - job_name: 'brain-service'
+    static_configs:
+      - targets: ['brain-service:3002']
+    metrics_path: '/metrics'
+
+  - job_name: 'farm-service'
+    static_configs:
+      - targets: ['farm-service:3003']
+
+  - job_name: 'agronomy-service'
+    static_configs:
+      - targets: ['agronomy-service:3004']
+
+  - job_name: 'finance-service'
+    static_configs:
+      - targets: ['finance-service:3005']
+
+  - job_name: 'marketplace-service'
+    static_configs:
+      - targets: ['marketplace-service:3006']
+
+  - job_name: 'analytics-service'
+    static_configs:
+      - targets: ['analytics-service:3007']
+
+  - job_name: 'ai-service'
+    static_configs:
+      - targets: ['ai-service:3008']
+
+  - job_name: 'platform-service'
+    static_configs:
+      - targets: ['platform-service:3009']
+
+  - job_name: 'whatsapp-gateway'
+    static_configs:
+      - targets: ['whatsapp-gateway:3001']
+
+  - job_name: 'nats'
+    static_configs:
+      - targets: ['nats:8222']
+    metrics_path: '/metrics'
+
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']

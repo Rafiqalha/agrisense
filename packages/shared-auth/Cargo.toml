@@ -1,0 +1,13 @@
+[package]
+name        = "shared-auth"
+version.workspace     = true
+edition.workspace     = true
+authors.workspace     = true
+
+[dependencies]
+jsonwebtoken  = { workspace = true }
+serde         = { workspace = true }
+chrono        = { workspace = true }
+uuid          = { workspace = true }
+thiserror     = { workspace = true }
+shared-types  = { workspace = true }

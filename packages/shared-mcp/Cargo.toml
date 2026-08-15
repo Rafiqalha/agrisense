@@ -1,0 +1,16 @@
+[package]
+name        = "shared-mcp"
+version.workspace     = true
+edition.workspace     = true
+authors.workspace     = true
+
+[dependencies]
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+uuid        = { workspace = true }
+chrono      = { workspace = true }
+async-trait = { workspace = true }
+axum        = { workspace = true }
+tokio       = { workspace = true }
+thiserror   = { workspace = true }
+shared-types = { workspace = true }

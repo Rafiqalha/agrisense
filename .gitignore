@@ -1,0 +1,64 @@
+# Rust
+target/
+Cargo.lock
+*.pdb
+
+# Node.js
+node_modules/
+.next/
+dist/
+.turbo/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.staging
+.env.production
+*.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Secrets
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+
+# Build artifacts
+*.wasm
+*.so
+*.dylib
+*.dll
+
+# Test coverage
+coverage/
+lcov.info
+tarpaulin-report.html
+
+# Docker
+.dockerignore
+
+# Logs
+*.log
+logs/
+
+# Kubernetes
+*.kubeconfig
+kubeconfig
+
+# Terraform / Pulumi
+.terraform/
+*.tfstate
+*.tfstate.backup
+Pulumi.*.yaml
+
+# Temporary
+tmp/
+scratch/
