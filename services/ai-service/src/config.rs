@@ -20,6 +20,8 @@ pub struct AppConfig {
     pub anthropic_api_key: String,
     #[serde(default = "default_local_url")]
     pub local_model_url: String,
+    #[serde(default)]
+    pub safety_enabled: bool,
 }
 
 fn default_port() -> u16 { 3008 }

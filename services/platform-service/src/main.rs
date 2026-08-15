@@ -1,5 +1,21 @@
+//! Platform Service
+//!
+//! Bundles: Identity + Notification + Media
+//! Each is a bounded module with clear ownership.
+//!
+//! When scale demands it, split into:
+//!   identity-service
+//!   notification-service
+//!   media-service
+//!
+//! Current internal boundaries are clean enough for zero-cost extraction.
+
 use anyhow::Result;
 use tracing::info;
+
+mod identity;
+mod notification;
+mod media;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -24,10 +40,15 @@ async fn main() -> Result<()> {
 
     let app = axum::Router::new()
         .route("/health", axum::routing::get(|| async { "ok" }))
+        // Identity routes
+        .nest("/identity", identity::router())
+        // Notification routes
+        .nest("/notifications", notification::router())
+        // Media routes
+        .nest("/media", media::router())
         .layer(tower_http::trace::TraceLayer::new_for_http());
 
-    let port = std::env::var("platform_service_PORT")
-        .unwrap_or_else(|_| "3009".into());
+    let port = std::env::var("PLATFORM_SERVICE_PORT").unwrap_or_else(|_| "3009".into());
     let addr = format!("0.0.0.0:{}", port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!(addr = %addr, "platform-service listening");
