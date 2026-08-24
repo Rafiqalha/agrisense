@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::sync::Arc;
 use tracing::info;
 
 mod config;
@@ -29,7 +30,7 @@ async fn main() -> Result<()> {
     info!(version = env!("CARGO_PKG_VERSION"), "Starting brain-service");
 
     // ── Infrastructure ─────────────────────────────────────────────────────
-    let db = shared_db::create_pool(&cfg.database_url, cfg.database_max_connections).await?;
+    let _db = shared_db::create_pool(&cfg.database_url, cfg.database_max_connections).await?;
     let cache = shared_cache::CacheClient::new(&cfg.redis_url).await?;
     let nats = async_nats::connect(&cfg.nats_url).await?;
 
@@ -41,14 +42,15 @@ async fn main() -> Result<()> {
     // brain-service acts as the central registry
 
     // ── Orchestrator ───────────────────────────────────────────────────────
-    let orchestrator = orchestrator::Orchestrator::new(
+    let orchestrator = Arc::new(orchestrator::Orchestrator::new(
         mcp_registry,
         cache,
         nats.clone(),
-    );
+    ));
 
     // ── HTTP Server ────────────────────────────────────────────────────────
     let app = axum::Router::new()
+        .route("/health", axum::routing::get(|| async { "ok" }))
         .nest("/mcp", mcp::router())
         .nest("/orchestrate", orchestrator::router())
         .layer(tower_http::trace::TraceLayer::new_for_http())

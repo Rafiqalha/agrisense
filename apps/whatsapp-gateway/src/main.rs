@@ -64,6 +64,7 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route("/webhook", axum::routing::get(verify_webhook))
         .route("/webhook", axum::routing::post(receive_message))
+        .route("/webhook/", axum::routing::post(receive_message))
         .route("/health",  axum::routing::get(|| async { "ok" }))
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(state);

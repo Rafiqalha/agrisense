@@ -5,7 +5,7 @@ pub mod permissions;
 use axum::{Router, Json, extract::State};
 use shared_mcp::{McpServiceManifest, McpToolCall, McpToolResult};
 
-pub fn router() -> Router<crate::orchestrator::Orchestrator> {
+pub fn router() -> Router<crate::orchestrator::SharedOrchestrator> {
     Router::new()
         .route("/manifest", axum::routing::get(get_manifest))
         .route("/register", axum::routing::post(register_service))

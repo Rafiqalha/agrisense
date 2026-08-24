@@ -21,13 +21,13 @@ impl CacheClient {
     pub async fn set<T: Serialize>(&mut self, key: &str, value: &T, ttl_secs: u64) -> anyhow::Result<()> {
         use redis::AsyncCommands;
         let serialized = serde_json::to_string(value)?;
-        self.manager.set_ex(key, serialized, ttl_secs).await?;
+        let _: () = self.manager.set_ex(key, serialized, ttl_secs).await?;
         Ok(())
     }
 
     pub async fn del(&mut self, key: &str) -> anyhow::Result<()> {
         use redis::AsyncCommands;
-        self.manager.del(key).await?;
+        let _: () = self.manager.del(key).await?;
         Ok(())
     }
 

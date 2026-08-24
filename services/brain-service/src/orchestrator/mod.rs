@@ -11,8 +11,7 @@
 
 use axum::{Router, Json, extract::State};
 use serde::{Deserialize, Serialize};
-use shared_types::{FarmerId, ConversationId};
-use async_nats::Client as NatsClient;
+use std::sync::Arc;
 
 use crate::mcp::registry::McpRegistry;
 use crate::intents::IntentDetector;
@@ -20,14 +19,14 @@ use crate::intents::IntentDetector;
 pub struct Orchestrator {
     pub mcp_registry: McpRegistry,
     pub cache: shared_cache::CacheClient,
-    pub nats: NatsClient,
+    pub nats: async_nats::Client,
 }
 
 impl Orchestrator {
     pub fn new(
         mcp_registry: McpRegistry,
         cache: shared_cache::CacheClient,
-        nats: NatsClient,
+        nats: async_nats::Client,
     ) -> Self {
         Self { mcp_registry, cache, nats }
     }
@@ -65,6 +64,7 @@ pub struct OrchestrateRequest {
     pub farmer_id: String,
     pub conversation_id: String,
     pub message: String,
+    #[serde(default)]
     pub media_urls: Vec<String>,
     pub channel: String,
 }
@@ -77,13 +77,16 @@ pub struct OrchestrateResponse {
     pub tools_used: Vec<String>,
 }
 
-pub fn router() -> Router<Orchestrator> {
+// Use Arc<Orchestrator> as Axum state — Orchestrator holds non-Clone resources
+pub type SharedOrchestrator = Arc<Orchestrator>;
+
+pub fn router() -> Router<SharedOrchestrator> {
     Router::new()
         .route("/", axum::routing::post(handle_orchestrate))
 }
 
 async fn handle_orchestrate(
-    State(orchestrator): State<Orchestrator>,
+    State(orchestrator): State<SharedOrchestrator>,
     Json(req): Json<OrchestrateRequest>,
 ) -> Json<OrchestrateResponse> {
     match orchestrator.process(req).await {

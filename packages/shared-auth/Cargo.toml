@@ -9,5 +9,6 @@ jsonwebtoken  = { workspace = true }
 serde         = { workspace = true }
 chrono        = { workspace = true }
 uuid          = { workspace = true }
+anyhow        = { workspace = true }
 thiserror     = { workspace = true }
 shared-types  = { workspace = true }
