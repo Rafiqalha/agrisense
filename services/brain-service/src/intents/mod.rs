@@ -54,7 +54,7 @@ impl IntentDetector {
         if lower.contains("pinjam") || lower.contains("kur") || lower.contains("kredit") {
             return Ok(Intent::RequestLoan);
         }
-        if lower.contains("panen") {
+        if lower.contains("panen") || lower.contains("umur") || lower.contains("berapa lama") {
             return Ok(Intent::CheckHarvestStatus);
         }
 

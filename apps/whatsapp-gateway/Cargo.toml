@@ -34,3 +34,6 @@ hmac  = "0.12"
 sha2  = "0.10"
 hex   = "0.4"
 
+# Media handling (data URI encoding)
+base64 = "0.22"
+

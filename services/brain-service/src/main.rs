@@ -9,6 +9,8 @@ mod workflows;
 mod memory;
 mod orchestrator;
 mod mcp;
+mod context;
+mod audit;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -30,7 +32,7 @@ async fn main() -> Result<()> {
     info!(version = env!("CARGO_PKG_VERSION"), "Starting brain-service");
 
     // ── Infrastructure ─────────────────────────────────────────────────────
-    let _db = shared_db::create_pool(&cfg.database_url, cfg.database_max_connections).await?;
+    let db = shared_db::create_pool(&cfg.database_url, cfg.database_max_connections).await?;
     let cache = shared_cache::CacheClient::new(&cfg.redis_url).await?;
     let nats = async_nats::connect(&cfg.nats_url).await?;
 
@@ -38,14 +40,25 @@ async fn main() -> Result<()> {
 
     // ── MCP Registry ───────────────────────────────────────────────────────
     let mcp_registry = mcp::registry::McpRegistry::new();
-    // Services register their tools on startup via NATS or HTTP
-    // brain-service acts as the central registry
+    // Builtin tools (executed in-process by brain-service). Domain services
+    // register their own tools at startup via POST /mcp/register.
+    mcp_registry
+        .register_service(shared_mcp::McpServiceManifest {
+            service_name: "farm-service".into(),
+            service_version: env!("CARGO_PKG_VERSION").into(),
+            tools: mcp::tools::builtin_tools(),
+            endpoint: "builtin://brain-service".into(),
+        })
+        .await;
+    info!(tools = mcp_registry.list_tools().await.len(), "Builtin MCP tools registered");
 
     // ── Orchestrator ───────────────────────────────────────────────────────
     let orchestrator = Arc::new(orchestrator::Orchestrator::new(
         mcp_registry,
         cache,
         nats.clone(),
+        db,
+        cfg.ai_service_url.clone(),
     ));
 
     // ── HTTP Server ────────────────────────────────────────────────────────

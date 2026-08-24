@@ -1,4 +1,12 @@
 use anyhow::Result;
+use axum::{
+    Json, Router,
+    extract::State,
+    http::StatusCode,
+    response::IntoResponse,
+};
+use serde::Deserialize;
+use std::sync::Arc;
 use tracing::info;
 
 mod providers;
@@ -12,6 +20,8 @@ mod prompts;
 mod config;
 
 use providers::{AiCapabilities, TextGeneration, VisionService, SpeechService, EmbeddingService, SafetyService};
+
+type SharedCapabilities = Arc<AiCapabilities>;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -79,26 +89,135 @@ async fn main() -> Result<()> {
     };
     info!(provider = safety.provider_name(), "Safety initialized");
 
-    let _capabilities = AiCapabilities { text, vision, speech, embedding, safety };
+    let capabilities = Arc::new(AiCapabilities { text, vision, speech, embedding, safety });
     info!("All AI capabilities initialized");
 
     // ── HTTP Server ────────────────────────────────────────────────────────
-    let app = axum::Router::new()
+    let app = Router::new()
         .route("/health", axum::routing::get(|| async { "ok" }))
         // Capability endpoints
-        .route("/generate", axum::routing::post(|| async { "TODO: text generation" }))
-        .route("/classify", axum::routing::post(|| async { "TODO: intent classification" }))
-        .route("/vision/analyze", axum::routing::post(|| async { "TODO: image analysis" }))
+        .route("/generate", axum::routing::post(generate_handler))
+        .route("/classify", axum::routing::post(classify_handler))
+        .route("/vision/analyze", axum::routing::post(vision_handler))
         .route("/speech/transcribe", axum::routing::post(|| async { "TODO: voice note transcription" }))
-        .route("/embeddings/generate", axum::routing::post(|| async { "TODO: embedding generation" }))
+        .route("/embeddings/generate", axum::routing::post(embeddings_handler))
         .route("/safety/moderate", axum::routing::post(|| async { "TODO: content moderation" }))
         // RAG
         .route("/rag/query", axum::routing::post(|| async { "TODO: RAG retrieval" }))
-        .layer(tower_http::trace::TraceLayer::new_for_http());
+        .layer(tower_http::trace::TraceLayer::new_for_http())
+        .with_state(capabilities);
 
     let addr = format!("0.0.0.0:{}", cfg.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!(addr = %addr, "ai-service listening");
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+// ─── Handlers ────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct GenerateHttpRequest {
+    #[serde(default)]
+    system_prompt: Option<String>,
+    messages: Vec<providers::ChatMessage>,
+    #[serde(default)]
+    temperature: Option<f32>,
+    #[serde(default)]
+    max_tokens: Option<u32>,
+}
+
+async fn generate_handler(
+    State(caps): State<SharedCapabilities>,
+    Json(req): Json<GenerateHttpRequest>,
+) -> Result<Json<providers::GenerateResponse>, ApiError> {
+    let resp = caps
+        .text
+        .generate(providers::GenerateRequest {
+            system_prompt: req.system_prompt,
+            messages: req.messages,
+            temperature: req.temperature,
+            max_tokens: req.max_tokens,
+        })
+        .await?;
+    Ok(Json(resp))
+}
+
+#[derive(Debug, Deserialize)]
+struct ClassifyHttpRequest {
+    message: String,
+    #[serde(default)]
+    context: String,
+}
+
+async fn classify_handler(
+    State(caps): State<SharedCapabilities>,
+    Json(req): Json<ClassifyHttpRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let intent = caps.text.classify_intent(&req.message, &req.context).await?;
+    Ok(Json(serde_json::json!({ "intent": intent })))
+}
+
+#[derive(Debug, Deserialize)]
+struct VisionHttpRequest {
+    image_url: String,
+    prompt: String,
+    #[serde(default = "default_analysis_type")]
+    analysis_type: providers::VisionAnalysisType,
+}
+
+fn default_analysis_type() -> providers::VisionAnalysisType {
+    providers::VisionAnalysisType::General
+}
+
+async fn vision_handler(
+    State(caps): State<SharedCapabilities>,
+    Json(req): Json<VisionHttpRequest>,
+) -> Result<Json<providers::VisionResponse>, ApiError> {
+    let resp = caps
+        .vision
+        .analyze_image(providers::VisionRequest {
+            image_url: req.image_url,
+            prompt: req.prompt,
+            analysis_type: req.analysis_type,
+        })
+        .await?;
+    Ok(Json(resp))
+}
+
+#[derive(Debug, Deserialize)]
+struct EmbeddingsHttpRequest {
+    texts: Vec<String>,
+}
+
+async fn embeddings_handler(
+    State(caps): State<SharedCapabilities>,
+    Json(req): Json<EmbeddingsHttpRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut embeddings = Vec::with_capacity(req.texts.len());
+    for text in &req.texts {
+        embeddings.push(caps.embedding.embed(text).await?);
+    }
+    Ok(Json(serde_json::json!({ "embeddings": embeddings })))
+}
+
+// ─── Error ───────────────────────────────────────────────────────────────────
+
+struct ApiError(anyhow::Error);
+
+impl<E: Into<anyhow::Error>> From<E> for ApiError {
+    fn from(err: E) -> Self {
+        Self(err.into())
+    }
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> axum::response::Response {
+        tracing::error!(error = %self.0, "ai-service request failed");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({ "error": self.0.to_string() }).to_string(),
+        )
+            .into_response()
+    }
 }

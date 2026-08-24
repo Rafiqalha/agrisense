@@ -24,6 +24,7 @@ reqwest      = { workspace = true }
 bytes        = { workspace = true }
 config       = { workspace = true }
 dotenvy      = { workspace = true }
+base64       = "0.22"
 
 # Internal
 shared-types        = { workspace = true }

@@ -14,12 +14,15 @@ pub struct AppConfig {
     pub otlp_endpoint: Option<String>,
     #[serde(default = "default_db_connections")]
     pub database_max_connections: u32,
+    #[serde(default = "default_ai_service_url")]
+    pub ai_service_url: String,
 }
 
 fn default_port() -> u16 { 3002 }
 fn default_log_level() -> String { "info".into() }
 fn default_log_format() -> String { "pretty".into() }
 fn default_db_connections() -> u32 { 10 }
+fn default_ai_service_url() -> String { "http://localhost:3008".into() }
 
 impl AppConfig {
     pub fn load() -> anyhow::Result<Self> {

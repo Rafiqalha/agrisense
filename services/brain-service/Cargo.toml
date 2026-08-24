@@ -26,6 +26,7 @@ async-nats   = { workspace = true }
 reqwest      = { workspace = true }
 config       = { workspace = true }
 dotenvy      = { workspace = true }
+sqlx         = { workspace = true }
 
 # Internal
 shared-types        = { workspace = true }

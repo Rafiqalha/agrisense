@@ -131,12 +131,14 @@ impl VisionService for GeminiProvider {
             _ => request.prompt.clone(),
         };
 
+        // Resolve the image into a Gemini part (base64 inline).
+        let image_part = fetch_image_part(&self.client, &request.image_url).await?;
+
         let body = serde_json::json!({
             "contents": [{
                 "parts": [
                     { "text": analysis_prompt },
-                    { "inline_data": { "mime_type": "image/jpeg", "data": "" }},
-                    // In practice, download image and inline as base64, or use file URI
+                    image_part,
                 ]
             }]
         });
@@ -153,14 +155,79 @@ impl VisionService for GeminiProvider {
 
         // Try to parse structured result from response
         let structured = serde_json::from_str::<serde_json::Value>(&analysis).ok();
+        let confidence = structured
+            .as_ref()
+            .and_then(|v| v["confidence"].as_f64())
+            .unwrap_or(0.0) as f32;
 
         Ok(VisionResponse {
             analysis: analysis.clone(),
             structured_result: structured,
-            confidence: 0.0, // TODO: extract from structured result
+            confidence,
             model: "gemini-2.0-flash".into(),
             latency_ms,
         })
+    }
+}
+
+/// Build the Gemini `part` object carrying the image bytes.
+///
+/// Accepts three forms of `image_url`:
+///   - `data:<mime>;base64,<data>`  → inline as-is (whatsapp-gateway sends this)
+///   - `http(s)://...`              → download, then inline as base64
+///   - local file path              → read, then inline as base64
+///
+/// Always inlines as base64: the Gemini REST API does not reliably fetch
+/// arbitrary public HTTP URLs, so we never rely on that.
+async fn fetch_image_part(
+    client: &reqwest::Client,
+    image_url: &str,
+) -> anyhow::Result<serde_json::Value> {
+    use base64::Engine;
+
+    if let Some(rest) = image_url.strip_prefix("data:") {
+        // data:<mime>;base64,<data>
+        let (mime, b64) = rest
+            .split_once(";base64,")
+            .ok_or_else(|| anyhow::anyhow!("invalid data URI (missing ;base64,)"))?;
+        return Ok(serde_json::json!({
+            "inline_data": { "mime_type": mime, "data": b64 }
+        }));
+    }
+
+    let (mime, bytes): (String, Vec<u8>) =
+        if image_url.starts_with("http://") || image_url.starts_with("https://") {
+            let resp = client.get(image_url).send().await?;
+            let mime = resp
+                .headers()
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("image/jpeg")
+                .to_string();
+            (mime, resp.bytes().await?.to_vec())
+        } else {
+            // Local file path (dev convenience)
+            ("image/jpeg".to_string(), std::fs::read(image_url)?)
+        };
+
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Ok(serde_json::json!({
+        "inline_data": { "mime_type": mime, "data": b64 }
+    }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn data_uri_is_inlined_as_is() {
+        let client = reqwest::Client::new();
+        let part = fetch_image_part(&client, "data:image/png;base64,QUJD")
+            .await
+            .expect("data uri parses");
+        assert_eq!(part["inline_data"]["mime_type"], "image/png");
+        assert_eq!(part["inline_data"]["data"], "QUJD");
     }
 }
 

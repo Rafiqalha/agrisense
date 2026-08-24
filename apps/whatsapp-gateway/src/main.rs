@@ -26,6 +26,7 @@ use tracing::{info, warn, error};
 mod signature;
 mod idempotency;
 mod config;
+mod whatsapp;
 
 #[derive(Clone)]
 struct AppState {
@@ -34,6 +35,9 @@ struct AppState {
     redis_url: String,
     webhook_verify_token: String,
     app_secret: String,
+    /// Outbound WhatsApp client. `None` when WHATSAPP_PHONE_NUMBER_ID /
+    /// WHATSAPP_ACCESS_TOKEN are not configured (e.g. local dev without Meta).
+    whatsapp: Option<whatsapp::WhatsAppClient>,
 }
 
 #[tokio::main]
@@ -59,6 +63,22 @@ async fn main() -> Result<()> {
             .unwrap_or_default(),
         app_secret: std::env::var("WHATSAPP_APP_SECRET")
             .unwrap_or_default(),
+        whatsapp: match (
+            std::env::var("WHATSAPP_PHONE_NUMBER_ID").ok(),
+            std::env::var("WHATSAPP_ACCESS_TOKEN").ok(),
+        ) {
+            (Some(phone_number_id), Some(access_token))
+                if !phone_number_id.is_empty() && !access_token.is_empty() =>
+            {
+                let client = whatsapp::WhatsAppClient::new(phone_number_id, access_token);
+                info!("Outbound WhatsApp client initialized");
+                Some(client)
+            }
+            _ => {
+                warn!("WHATSAPP_PHONE_NUMBER_ID / WHATSAPP_ACCESS_TOKEN not set — outbound replies disabled");
+                None
+            }
+        },
     };
 
     let app = Router::new()
@@ -160,7 +180,7 @@ async fn receive_message(
                 }
 
                 // ── Step 2: Idempotency check ─────────────────────────────
-                let idempotency_key = format!("wa:{}:{}", from, msg_id);
+                let _idempotency_key = format!("wa:{}:{}", from, msg_id);
                 // TODO: check Redis for duplicate (idempotency::is_duplicate)
                 // if is_duplicate { info!("Duplicate skipped"); continue; }
 
@@ -180,23 +200,63 @@ async fn receive_message(
                 // )
 
                 // ── Step 4: Extract content and forward to brain ──────────
-                let (content, media_url) = extract_content(msg, &msg_type);
+                let (content, media_id) = extract_content(msg, &msg_type);
 
-                let orchestrate_request = serde_json::json!({
-                    "farmer_id": from,  // phone number → farmer lookup in brain
-                    "conversation_id": format!("wa:{}", from),
-                    "message": content,
-                    "media_urls": media_url.map(|u| vec![u]).unwrap_or_default(),
-                    "channel": "whatsapp",
-                });
-
-                // Forward to brain-service (fire-and-forget OK for WhatsApp webhook response)
+                // ── Forward to brain + send reply back (async, non-blocking) ──
+                // The webhook returns 200 immediately; media resolution, brain
+                // orchestration and the outbound WhatsApp reply happen here.
                 let brain_url = format!("{}/orchestrate", state.brain_service_url);
                 let client = state.http_client.clone();
-                let req_body = orchestrate_request.clone();
+                let whatsapp = state.whatsapp.clone();
+                let sender_phone = from.clone();
+                let content_clone = content.clone();
                 tokio::spawn(async move {
-                    match client.post(&brain_url).json(&req_body).send().await {
-                        Ok(resp) => info!(status = %resp.status(), "Brain response received"),
+                    // Resolve media → data URI so downstream AI can consume it
+                    // without WhatsApp credentials.
+                    let mut resolved_media: Vec<String> = Vec::new();
+                    if let (Some(wa), Some(media_id)) = (&whatsapp, media_id.as_deref()) {
+                        if let Some(id) = media_id.strip_prefix("wa-media://") {
+                            match wa.download_media(id).await {
+                                Ok((bytes, mime)) => {
+                                    resolved_media.push(whatsapp::to_data_uri(&mime, &bytes));
+                                }
+                                Err(e) => error!(error = %e, media_id = %id, "Media download failed"),
+                            }
+                        }
+                    }
+
+                    let orchestrate_request = serde_json::json!({
+                        "farmer_id": sender_phone.clone(), // phone → farmer lookup in brain
+                        "conversation_id": format!("wa:{}", sender_phone),
+                        "message": content_clone,
+                        "media_urls": resolved_media,
+                        "channel": "whatsapp",
+                    });
+
+                    match client.post(&brain_url).json(&orchestrate_request).send().await {
+                        Ok(resp) => {
+                            let status = resp.status();
+                            if status.is_success() {
+                                match resp.json::<serde_json::Value>().await {
+                                    Ok(body) => {
+                                        let reply = body["response"].as_str().unwrap_or("").to_string();
+                                        if !reply.is_empty() {
+                                            if let Some(wa) = &whatsapp {
+                                                match wa.send_text_message(&sender_phone, &reply).await {
+                                                    Ok(_) => info!(to = %sender_phone, "Reply sent to WhatsApp"),
+                                                    Err(e) => error!(error = %e, to = %sender_phone, "Failed to send WhatsApp reply"),
+                                                }
+                                            } else {
+                                                info!(reply = %reply, "Outbound disabled — reply logged");
+                                            }
+                                        }
+                                    }
+                                    Err(e) => error!(error = %e, "Failed to parse brain response"),
+                                }
+                            } else {
+                                warn!(status = %status, "Brain returned error status");
+                            }
+                        }
                         Err(e) => error!(error = %e, "Failed to reach brain-service"),
                     }
                     // Step 5: Mark as processed in ai.inbound_messages
