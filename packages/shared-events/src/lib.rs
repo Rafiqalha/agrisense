@@ -1,12 +1,12 @@
-pub mod farmer_events;
-pub mod farm_events;
 pub mod agronomy_events;
-pub mod finance_events;
 pub mod ai_events;
+pub mod farm_events;
+pub mod farmer_events;
+pub mod finance_events;
 pub mod outbox;
 
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 // ─── Event Envelope ────────────────────────────────────────────────────────────

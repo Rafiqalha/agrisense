@@ -15,7 +15,6 @@ pub struct CachedResponse {
 pub fn normalize_query(query: &str) -> String {
     query
         .to_lowercase()
-        .trim()
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")

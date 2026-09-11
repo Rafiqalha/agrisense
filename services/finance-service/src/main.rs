@@ -16,21 +16,37 @@ async fn main() -> Result<()> {
         otlp_endpoint: std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok(),
     });
 
-    info!(version = env!("CARGO_PKG_VERSION"), "Starting finance-service");
+    info!(
+        version = env!("CARGO_PKG_VERSION"),
+        "Starting finance-service"
+    );
 
     let database_url = std::env::var("DATABASE_URL")?;
-    let _db = shared_db::create_pool(&database_url, 10).await?;
+    let db = shared_db::create_pool(&database_url, 10).await?;
     info!("Connected to PostgreSQL");
 
+    let readiness_db = db.clone();
     let app = axum::Router::new()
         .route("/health", axum::routing::get(|| async { "ok" }))
+        .route("/live", axum::routing::get(|| async { "ok" }))
+        .route(
+            "/ready",
+            axum::routing::get(move || db_readiness(readiness_db.clone())),
+        )
         .layer(tower_http::trace::TraceLayer::new_for_http());
 
-    let port = std::env::var("finance_service_PORT")
-        .unwrap_or_else(|_| "3005".into());
+    let port = std::env::var("FINANCE_SERVICE_PORT").unwrap_or_else(|_| "3005".into());
     let addr = format!("0.0.0.0:{}", port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!(addr = %addr, "finance-service listening");
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+async fn db_readiness(db: shared_db::DbPool) -> axum::http::StatusCode {
+    if shared_db::is_ready(&db).await {
+        axum::http::StatusCode::OK
+    } else {
+        axum::http::StatusCode::SERVICE_UNAVAILABLE
+    }
 }

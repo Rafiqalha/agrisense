@@ -1,32 +1,40 @@
 use anyhow::Result;
 use axum::{
-    Json, Router,
-    extract::State,
+    extract::{DefaultBodyLimit, Request, State},
     http::StatusCode,
-    response::IntoResponse,
+    middleware::{self, Next},
+    response::{IntoResponse, Response},
+    Json, Router,
 };
 use serde::Deserialize;
 use std::sync::Arc;
 use tracing::info;
 
-mod providers;
 mod cache;
-mod vision;
-mod speech;
-mod rag;
+mod config;
 mod embeddings;
 mod moderation;
 mod prompts;
-mod config;
+mod providers;
+mod rag;
+mod speech;
+mod vision;
 
-use providers::{AiCapabilities, TextGeneration, VisionService, SpeechService, EmbeddingService, SafetyService};
+use providers::AiCapabilities;
 
 type SharedCapabilities = Arc<AiCapabilities>;
+
+#[derive(Clone)]
+struct InternalBoundary {
+    token: shared_auth::InternalToken,
+    request_slots: Arc<tokio::sync::Semaphore>,
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
     let cfg = config::AppConfig::load()?;
+    let brain_token = shared_auth::InternalToken::new(cfg.brain_ai_token.clone())?;
 
     shared_observability::init(shared_observability::ObservabilityConfig {
         service_name: "ai-service".into(),
@@ -41,69 +49,50 @@ async fn main() -> Result<()> {
 
     info!(version = env!("CARGO_PKG_VERSION"), "Starting ai-service");
 
-    // ── Build AI Capabilities ──────────────────────────────────────────────
-    //
-    // Each CAPABILITY can have a DIFFERENT provider.
-    // This is the key insight:
-    //   text:      Gemini (or OpenAI, or Anthropic, or Local)
-    //   vision:    Gemini (multimodal)
-    //   speech:    Whisper (OpenAI) — Gemini doesn't do STT well
-    //   embedding: Gemini text-embedding-004
-    //   safety:    Llama Guard (local) or NoOp (dev)
-    //
-
-    // Text generation — configurable via AI_PROVIDER env
-    let text: Box<dyn TextGeneration> = match cfg.ai_provider.as_str() {
-        "gemini"    => Box::new(providers::gemini::GeminiProvider::new(cfg.gemini_api_key.clone(), cfg.gemini_model.clone())),
-        "openai"    => Box::new(providers::openai::OpenAiProvider::new(cfg.openai_api_key.clone())),
-        "anthropic" => Box::new(providers::anthropic::AnthropicProvider::new(cfg.anthropic_api_key.clone())),
-        "local"     => Box::new(providers::local::LocalProvider::new(cfg.local_model_url.clone())),
-        other       => anyhow::bail!("Unknown AI provider: {}", other),
-    };
-    info!(provider = text.provider_name(), "Text generation initialized");
-
-    // Vision — always Gemini (best multimodal for agriculture)
-    let vision: Box<dyn VisionService> = Box::new(
-        providers::gemini::GeminiProvider::new(cfg.gemini_api_key.clone(), "gemini-2.0-flash".into())
+    anyhow::ensure!(cfg.ai_provider == "gemini", "AI_PROVIDER must be gemini");
+    let provider = providers::gemini::GeminiProvider::new(cfg.gemini_api_key, cfg.gemini_model)?;
+    info!(
+        provider = "gemini",
+        "Text and vision initialized; speech, embeddings, moderation and RAG unavailable"
     );
-    info!(provider = vision.provider_name(), "Vision initialized");
-
-    // Speech — Whisper (via OpenAI API)
-    let speech: Box<dyn SpeechService> = Box::new(
-        providers::openai::WhisperProvider::new(cfg.openai_api_key.clone())
-    );
-    info!(provider = speech.provider_name(), "Speech-to-text initialized");
-
-    // Embeddings — Gemini text-embedding-004
-    let embedding: Box<dyn EmbeddingService> = Box::new(
-        providers::gemini::GeminiProvider::new(cfg.gemini_api_key.clone(), "text-embedding-004".into())
-    );
-    info!(provider = embedding.provider_name(), dim = embedding.dimension(), "Embeddings initialized");
-
-    // Safety — Llama Guard (local Ollama) or NoOp for development
-    let safety: Box<dyn SafetyService> = if cfg.safety_enabled {
-        Box::new(providers::safety::LlamaGuardProvider::new(cfg.local_model_url.clone()))
-    } else {
-        info!("Safety moderation DISABLED (dev mode)");
-        Box::new(providers::safety::NoOpSafetyProvider)
-    };
-    info!(provider = safety.provider_name(), "Safety initialized");
-
-    let capabilities = Arc::new(AiCapabilities { text, vision, speech, embedding, safety });
-    info!("All AI capabilities initialized");
+    let capabilities = Arc::new(AiCapabilities {
+        text: Box::new(provider.clone()),
+        vision: Box::new(provider),
+    });
 
     // ── HTTP Server ────────────────────────────────────────────────────────
-    let app = Router::new()
-        .route("/health", axum::routing::get(|| async { "ok" }))
+    let protected = Router::new()
         // Capability endpoints
         .route("/generate", axum::routing::post(generate_handler))
         .route("/classify", axum::routing::post(classify_handler))
         .route("/vision/analyze", axum::routing::post(vision_handler))
-        .route("/speech/transcribe", axum::routing::post(|| async { "TODO: voice note transcription" }))
-        .route("/embeddings/generate", axum::routing::post(embeddings_handler))
-        .route("/safety/moderate", axum::routing::post(|| async { "TODO: content moderation" }))
+        .route(
+            "/speech/transcribe",
+            axum::routing::post(unsupported_capability),
+        )
+        .route(
+            "/embeddings/generate",
+            axum::routing::post(unsupported_capability),
+        )
+        .route(
+            "/safety/moderate",
+            axum::routing::post(unsupported_capability),
+        )
         // RAG
-        .route("/rag/query", axum::routing::post(|| async { "TODO: RAG retrieval" }))
+        .route("/rag/query", axum::routing::post(unsupported_capability))
+        .route_layer(middleware::from_fn_with_state(
+            InternalBoundary {
+                token: brain_token,
+                request_slots: Arc::new(tokio::sync::Semaphore::new(32)),
+            },
+            require_brain_service,
+        ));
+    let app = Router::new()
+        .route("/health", axum::routing::get(|| async { "ok" }))
+        .route("/live", axum::routing::get(|| async { "ok" }))
+        .route("/ready", axum::routing::get(|| async { "ok" }))
+        .merge(protected)
+        .layer(DefaultBodyLimit::max(16 * 1024 * 1024))
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(capabilities);
 
@@ -112,6 +101,24 @@ async fn main() -> Result<()> {
     info!(addr = %addr, "ai-service listening");
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+async fn require_brain_service(
+    State(boundary): State<InternalBoundary>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let authorization = request
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok());
+    if !boundary.token.authorize_header(authorization) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let Ok(_permit) = boundary.request_slots.try_acquire() else {
+        return StatusCode::TOO_MANY_REQUESTS.into_response();
+    };
+    next.run(request).await
 }
 
 // ─── Handlers ────────────────────────────────────────────────────────────────
@@ -125,6 +132,8 @@ struct GenerateHttpRequest {
     temperature: Option<f32>,
     #[serde(default)]
     max_tokens: Option<u32>,
+    #[serde(default)]
+    image_urls: Vec<String>,
 }
 
 async fn generate_handler(
@@ -138,6 +147,7 @@ async fn generate_handler(
             messages: req.messages,
             temperature: req.temperature,
             max_tokens: req.max_tokens,
+            image_urls: req.image_urls,
         })
         .await?;
     Ok(Json(resp))
@@ -154,7 +164,10 @@ async fn classify_handler(
     State(caps): State<SharedCapabilities>,
     Json(req): Json<ClassifyHttpRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let intent = caps.text.classify_intent(&req.message, &req.context).await?;
+    let intent = caps
+        .text
+        .classify_intent(&req.message, &req.context)
+        .await?;
     Ok(Json(serde_json::json!({ "intent": intent })))
 }
 
@@ -185,20 +198,15 @@ async fn vision_handler(
     Ok(Json(resp))
 }
 
-#[derive(Debug, Deserialize)]
-struct EmbeddingsHttpRequest {
-    texts: Vec<String>,
-}
-
-async fn embeddings_handler(
-    State(caps): State<SharedCapabilities>,
-    Json(req): Json<EmbeddingsHttpRequest>,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    let mut embeddings = Vec::with_capacity(req.texts.len());
-    for text in &req.texts {
-        embeddings.push(caps.embedding.embed(text).await?);
-    }
-    Ok(Json(serde_json::json!({ "embeddings": embeddings })))
+async fn unsupported_capability() -> (StatusCode, Json<serde_json::Value>) {
+    (
+        StatusCode::NOT_IMPLEMENTED,
+        Json(serde_json::json!({
+            "error": "capability_not_supported",
+            "provider": "gemini",
+            "message": "Deployment ini mendukung teks dan gambar; speech, embedding, moderation dan RAG belum tersedia."
+        })),
+    )
 }
 
 // ─── Error ───────────────────────────────────────────────────────────────────
@@ -213,6 +221,13 @@ impl<E: Into<anyhow::Error>> From<E> for ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
+        if let Some(error) = self.0.downcast_ref::<providers::gemini::InvalidInput>() {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": error.to_string() })),
+            )
+                .into_response();
+        }
         tracing::error!(error = %self.0, "ai-service request failed");
         (
             StatusCode::INTERNAL_SERVER_ERROR,

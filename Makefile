@@ -34,6 +34,19 @@ infra-up: ## Start infrastructure (Postgres, Redis, NATS, monitoring)
 	docker compose -f docker-compose.yml up -d postgres redis nats
 	@echo "$(GREEN)✅ Infrastructure started$(RESET)"
 
+.PHONY: local-up
+local-up: ## Build and start the complete local stack, waiting until ready
+	docker compose --profile services up -d --build --wait
+	@echo "$(GREEN)✅ AgriSense local stack is ready$(RESET)"
+
+.PHONY: local-down
+local-down: ## Stop the complete local stack without deleting data
+	docker compose --profile services down
+
+.PHONY: local-status
+local-status: ## Show local service state and health
+	docker compose --profile services ps
+
 .PHONY: infra-down
 infra-down: ## Stop infrastructure
 	docker compose down

@@ -14,8 +14,8 @@ use anyhow::Result;
 use tracing::info;
 
 mod identity;
-mod notification;
 mod media;
+mod notification;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -32,14 +32,23 @@ async fn main() -> Result<()> {
         otlp_endpoint: std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok(),
     });
 
-    info!(version = env!("CARGO_PKG_VERSION"), "Starting platform-service");
+    info!(
+        version = env!("CARGO_PKG_VERSION"),
+        "Starting platform-service"
+    );
 
     let database_url = std::env::var("DATABASE_URL")?;
-    let _db = shared_db::create_pool(&database_url, 10).await?;
+    let db = shared_db::create_pool(&database_url, 10).await?;
     info!("Connected to PostgreSQL");
 
+    let readiness_db = db.clone();
     let app = axum::Router::new()
         .route("/health", axum::routing::get(|| async { "ok" }))
+        .route("/live", axum::routing::get(|| async { "ok" }))
+        .route(
+            "/ready",
+            axum::routing::get(move || db_readiness(readiness_db.clone())),
+        )
         // Identity routes
         .nest("/identity", identity::router())
         // Notification routes
@@ -54,4 +63,12 @@ async fn main() -> Result<()> {
     info!(addr = %addr, "platform-service listening");
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+async fn db_readiness(db: shared_db::DbPool) -> axum::http::StatusCode {
+    if shared_db::is_ready(&db).await {
+        axum::http::StatusCode::OK
+    } else {
+        axum::http::StatusCode::SERVICE_UNAVAILABLE
+    }
 }

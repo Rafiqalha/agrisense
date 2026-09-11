@@ -11,7 +11,7 @@
 //!   4. Publisher marks row as published
 //!
 //! Usage in a service:
-//! ```
+//! ```ignore
 //! let tx = pool.begin().await?;
 //!
 //! // Domain write
@@ -26,9 +26,9 @@
 //! // Event WILL be published, even if NATS was temporarily down.
 //! ```
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OutboxEntry {

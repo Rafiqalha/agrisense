@@ -47,14 +47,14 @@ WHERE NOT EXISTS (
     SELECT 1 FROM farm.farms WHERE id = '33333333-3333-3333-3333-333333333333'
 );
 
--- 4. Melon crop, planted 32 days ago (crop_type='other' + seed_variety='Melon')
+-- 4. Melon crop, planted 32 days ago.
 --    planted_at is relative so age_days is always 32 regardless of when seeded.
 INSERT INTO farm.crops (id, farm_id, crop_type, seed_variety, area_hectares, planted_at, expected_harvest_at, status, notes)
 SELECT
     '44444444-4444-4444-4444-444444444444',
     '33333333-3333-3333-3333-333333333333',
-    'other',
-    'Melon (Golden Langkawi)',
+    'melon',
+    'Golden Langkawi',
     0.0500,
     (NOW() - INTERVAL '32 days')::DATE,
     (NOW() + INTERVAL '38 days')::DATE,

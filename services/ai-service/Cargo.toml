@@ -32,4 +32,5 @@ shared-events       = { workspace = true }
 shared-mcp          = { workspace = true }
 shared-db           = { workspace = true }
 shared-cache        = { workspace = true }
+shared-auth         = { workspace = true }
 shared-observability = { workspace = true }

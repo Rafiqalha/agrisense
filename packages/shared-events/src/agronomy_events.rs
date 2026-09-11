@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use shared_types::{DiseaseId, FarmId, FarmerId, RecommendationId, SeverityLevel, CropType};
+use shared_types::{CropType, DiseaseId, FarmId, FarmerId, RecommendationId, SeverityLevel};
 
 // ─── Agronomy Domain Events ───────────────────────────────────────────────────
 // NATS subjects: agrisense.agronomy.*

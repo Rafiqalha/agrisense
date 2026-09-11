@@ -1,8 +1,7 @@
+#![allow(dead_code)] // Provider capability scaffold; not every provider is active yet.
+
+// Legacy provider source files are retained, but are not compiled or selected.
 pub mod gemini;
-pub mod openai;
-pub mod anthropic;
-pub mod local;
-pub mod safety;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -21,14 +20,8 @@ use serde::{Deserialize, Serialize};
 //   ✅ trait EmbeddingService { embed }
 //   ✅ trait SafetyService { moderate }
 //
-// Why? Because:
-//   - Gemini handles text + vision
-//   - Whisper handles speech (not Gemini)
-//   - Llama Guard handles safety (not Gemini)
-//   - pgvector handles local embeddings (optionally Gemini)
-//
-// Each capability can have a DIFFERENT provider behind it.
-// An agent calls VisionService, not GeminiProvider.
+// Gemini currently implements text and vision. Unsupported capabilities
+// return HTTP 501; they never silently use another provider.
 
 // ─── Text Generation ──────────────────────────────────────────────────────────
 
@@ -97,6 +90,9 @@ pub struct GenerateRequest {
     pub messages: Vec<ChatMessage>,
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
+    /// Images attached to the final user message, using URLs or base64 data URIs.
+    #[serde(default)]
+    pub image_urls: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -107,6 +103,7 @@ pub struct ChatMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenerateResponse {
+    pub provider: String,
     pub content: String,
     pub model: String,
     pub input_tokens: u32,
@@ -143,8 +140,8 @@ pub struct VisionResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TranscribeRequest {
     pub audio_url: String,
-    pub language: Option<String>,    // default: "id" (Indonesian)
-    pub format: Option<String>,      // "ogg", "mp3", "wav"
+    pub language: Option<String>, // default: "id" (Indonesian)
+    pub format: Option<String>,   // "ogg", "mp3", "wav"
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -175,7 +172,7 @@ pub enum ModerationContentType {
 pub struct ModerationResponse {
     pub safe: bool,
     pub categories: Vec<ModerationCategory>,
-    pub risk_level: String,      // "low", "medium", "high"
+    pub risk_level: String, // "low", "medium", "high"
     pub model: String,
     pub latency_ms: u64,
 }
@@ -190,20 +187,10 @@ pub struct ModerationCategory {
 // ─── Composite: AI Capabilities Bundle ────────────────────────────────────────
 //
 // For convenience, a service can hold all capabilities together.
-// Each capability can be backed by a DIFFERENT provider.
-//
-// Example:
-//   text:      GeminiProvider
-//   vision:    GeminiProvider
-//   speech:    WhisperProvider
-//   embedding: GeminiProvider
-//   safety:    LlamaGuardProvider
+// Only capabilities implemented by the selected Gemini API are active.
 //
 
 pub struct AiCapabilities {
     pub text: Box<dyn TextGeneration>,
     pub vision: Box<dyn VisionService>,
-    pub speech: Box<dyn SpeechService>,
-    pub embedding: Box<dyn EmbeddingService>,
-    pub safety: Box<dyn SafetyService>,
 }

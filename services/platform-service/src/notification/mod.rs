@@ -12,6 +12,12 @@ use axum::Router;
 
 pub fn router() -> Router {
     Router::new()
-        .route("/send", axum::routing::post(|| async { "TODO: send notification" }))
-        .route("/templates", axum::routing::get(|| async { "TODO: list templates" }))
+        .route(
+            "/send",
+            axum::routing::post(|| async { "TODO: send notification" }),
+        )
+        .route(
+            "/templates",
+            axum::routing::get(|| async { "TODO: list templates" }),
+        )
 }

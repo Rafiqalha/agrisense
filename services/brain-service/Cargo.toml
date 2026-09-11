@@ -27,6 +27,7 @@ reqwest      = { workspace = true }
 config       = { workspace = true }
 dotenvy      = { workspace = true }
 sqlx         = { workspace = true }
+sha2         = { workspace = true }
 
 # Internal
 shared-types        = { workspace = true }
@@ -34,4 +35,5 @@ shared-events       = { workspace = true }
 shared-mcp          = { workspace = true }
 shared-db           = { workspace = true }
 shared-cache        = { workspace = true }
+shared-auth         = { workspace = true }
 shared-observability = { workspace = true }

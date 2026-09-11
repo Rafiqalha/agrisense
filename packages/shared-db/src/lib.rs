@@ -1,4 +1,4 @@
-use sqlx::{PgPool, postgres::PgPoolOptions};
+use sqlx::{postgres::PgPoolOptions, PgPool};
 
 pub type DbPool = PgPool;
 
@@ -15,4 +15,11 @@ pub async fn run_migrations(pool: &DbPool) -> anyhow::Result<()> {
         .run(pool)
         .await?;
     Ok(())
+}
+
+pub async fn is_ready(pool: &DbPool) -> bool {
+    sqlx::query_scalar::<_, i32>("SELECT 1")
+        .fetch_one(pool)
+        .await
+        .is_ok()
 }

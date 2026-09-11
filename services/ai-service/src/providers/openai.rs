@@ -1,12 +1,11 @@
 //! OpenAI provider — implements TextGeneration.
 //! Also hosts Whisper for SpeechService.
 
-use async_trait::async_trait;
 use super::{
-    TextGeneration, SpeechService,
-    GenerateRequest, GenerateResponse,
-    TranscribeRequest, TranscribeResponse,
+    GenerateRequest, GenerateResponse, SpeechService, TextGeneration, TranscribeRequest,
+    TranscribeResponse,
 };
+use async_trait::async_trait;
 
 pub struct OpenAiProvider {
     api_key: String,
@@ -15,13 +14,18 @@ pub struct OpenAiProvider {
 
 impl OpenAiProvider {
     pub fn new(api_key: String) -> Self {
-        Self { api_key, client: reqwest::Client::new() }
+        Self {
+            api_key,
+            client: reqwest::Client::new(),
+        }
     }
 }
 
 #[async_trait]
 impl TextGeneration for OpenAiProvider {
-    fn provider_name(&self) -> &str { "openai" }
+    fn provider_name(&self) -> &str {
+        "openai"
+    }
 
     async fn generate(&self, _request: GenerateRequest) -> anyhow::Result<GenerateResponse> {
         // TODO: implement OpenAI chat completion
@@ -41,17 +45,23 @@ pub struct WhisperProvider {
 
 impl WhisperProvider {
     pub fn new(api_key: String) -> Self {
-        Self { api_key, client: reqwest::Client::new() }
+        Self {
+            api_key,
+            client: reqwest::Client::new(),
+        }
     }
 }
 
 #[async_trait]
 impl SpeechService for WhisperProvider {
-    fn provider_name(&self) -> &str { "whisper" }
+    fn provider_name(&self) -> &str {
+        "whisper"
+    }
 
     async fn transcribe(&self, request: TranscribeRequest) -> anyhow::Result<TranscribeResponse> {
         // Download audio from URL
-        let audio_bytes = self.client
+        let audio_bytes = self
+            .client
             .get(&request.audio_url)
             .send()
             .await?
@@ -63,12 +73,16 @@ impl SpeechService for WhisperProvider {
             .text("model", "whisper-1")
             .text("language", request.language.unwrap_or_else(|| "id".into()))
             .text("response_format", "verbose_json")
-            .part("file", reqwest::multipart::Part::bytes(audio_bytes.to_vec())
-                .file_name("voice_note.ogg")
-                .mime_str("audio/ogg")?);
+            .part(
+                "file",
+                reqwest::multipart::Part::bytes(audio_bytes.to_vec())
+                    .file_name("voice_note.ogg")
+                    .mime_str("audio/ogg")?,
+            );
 
         let start = std::time::Instant::now();
-        let resp: serde_json::Value = self.client
+        let resp: serde_json::Value = self
+            .client
             .post("https://api.openai.com/v1/audio/transcriptions")
             .header("Authorization", format!("Bearer {}", self.api_key))
             .multipart(form)

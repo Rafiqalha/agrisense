@@ -92,7 +92,7 @@ CREATE TABLE ai.inbound_messages (
     channel             VARCHAR(50) NOT NULL DEFAULT 'whatsapp',
     sender_phone        VARCHAR(20) NOT NULL,
     -- Content
-    message_type        VARCHAR(20) NOT NULL CHECK (message_type IN ('text', 'image', 'audio', 'video', 'document', 'location', 'contact')),
+    message_type        VARCHAR(20) NOT NULL CHECK (message_type IN ('text', 'image', 'audio', 'video', 'document', 'location', 'contact', 'unknown')),
     content             TEXT,
     media_url           TEXT,
     media_mime_type     VARCHAR(100),
@@ -102,6 +102,18 @@ CREATE TABLE ai.inbound_messages (
                         CHECK (status IN ('received', 'processing', 'processed', 'failed', 'duplicate')),
     processed_at        TIMESTAMPTZ,
     error_message       TEXT,
+    processing_attempts INTEGER NOT NULL DEFAULT 0,
+    last_attempt_at     TIMESTAMPTZ,
+    next_attempt_at     TIMESTAMPTZ,
+    generated_reply     TEXT,
+    reply_generated_at  TIMESTAMPTZ,
+    transcribed_text    TEXT,
+    transcribed_at      TIMESTAMPTZ,
+    transcription_provider VARCHAR(50),
+    transcription_model VARCHAR(100),
+    outbound_media_id   VARCHAR(255),
+    outbound_media_created_at TIMESTAMPTZ,
+    outbound_message_id VARCHAR(255),
     -- Signature verification
     signature_valid     BOOLEAN,
     -- Timestamps
@@ -111,7 +123,39 @@ CREATE TABLE ai.inbound_messages (
 CREATE INDEX idx_ai_inbound_external_id ON ai.inbound_messages (external_message_id);
 CREATE INDEX idx_ai_inbound_phone       ON ai.inbound_messages (sender_phone);
 CREATE INDEX idx_ai_inbound_status      ON ai.inbound_messages (status) WHERE status IN ('received', 'processing', 'failed');
+CREATE INDEX idx_ai_inbound_retry       ON ai.inbound_messages (next_attempt_at, received_at)
+    WHERE status IN ('received', 'processing', 'failed');
 CREATE INDEX idx_ai_inbound_received_at ON ai.inbound_messages (received_at);
+
+-- ─── Farm activity confirmation state ───────────────────────────────────────
+-- Brain owns only the confirmation workflow. The final domain write is made
+-- by farm-service through a narrow, owner-scoped database function.
+CREATE TABLE ai.activity_command_sessions (
+    phone_digest    BYTEA PRIMARY KEY,
+    phone           VARCHAR(20) NOT NULL UNIQUE,
+    current_step    VARCHAR(20) NOT NULL CHECK (current_step IN ('details', 'confirm')),
+    draft           JSONB NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(draft) = 'object'),
+    status          VARCHAR(20) NOT NULL DEFAULT 'active'
+                    CHECK (status IN ('active', 'completed', 'cancelled')),
+    version         INTEGER NOT NULL DEFAULT 1,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at    TIMESTAMPTZ
+);
+
+CREATE INDEX idx_ai_activity_command_active
+    ON ai.activity_command_sessions (updated_at)
+    WHERE status = 'active';
+
+CREATE TABLE ai.activity_command_responses (
+    request_id      UUID PRIMARY KEY,
+    phone_digest    BYTEA NOT NULL,
+    response        TEXT NOT NULL CHECK (length(response) BETWEEN 1 AND 4000),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_ai_activity_command_responses_owner
+    ON ai.activity_command_responses (phone_digest, created_at DESC);
 
 -- ─── Workflow Runs (durable state for multi-step flows) ───────────────────────
 -- Workflow state persisted to DB, not just RAM.

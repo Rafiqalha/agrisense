@@ -9,10 +9,14 @@ build:
   artifacts:
     - image: agrisense/brain-service
       docker:
-        dockerfile: services/brain-service/Dockerfile
+        dockerfile: Dockerfile
+        buildArgs:
+          DEFAULT_SERVICE: brain-service
     - image: agrisense/whatsapp-gateway
       docker:
-        dockerfile: apps/whatsapp-gateway/Dockerfile
+        dockerfile: Dockerfile
+        buildArgs:
+          DEFAULT_SERVICE: whatsapp-gateway
 
 deploy:
   kubectl:

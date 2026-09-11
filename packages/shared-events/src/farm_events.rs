@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use shared_types::{FarmId, FarmerId, CropId, CropType, HarvestId, ActivityId};
+use shared_types::{ActivityId, CropId, CropType, FarmId, FarmerId, HarvestId};
 
 // ─── Farm Domain Events ───────────────────────────────────────────────────────
 // NATS subjects: agrisense.farm.*
@@ -42,6 +42,21 @@ pub struct ActivityLogged {
     pub farmer_id: FarmerId,
     pub activity_type: String, // fertilizing, irrigation, spraying, etc.
     pub notes: Option<String>,
+}
+
+/// Canonical payload published after an authenticated farm activity has been
+/// committed together with its transactional outbox record.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FarmActivityRecorded {
+    pub activity_id: ActivityId,
+    pub farm_id: FarmId,
+    pub crop_id: CropId,
+    pub farmer_id: FarmerId,
+    pub activity_type: String,
+    pub description: String,
+    pub quantity: Option<f64>,
+    pub unit: Option<String>,
+    pub performed_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

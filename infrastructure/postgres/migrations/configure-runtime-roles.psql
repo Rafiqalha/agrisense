@@ -1,0 +1,12 @@
+\set ON_ERROR_STOP on
+
+-- psql variables are quoted as SQL literals through format(%L); special
+-- characters in passwords cannot become SQL syntax.
+SELECT format('ALTER ROLE agrisense_brain WITH LOGIN PASSWORD %L', :'brain_password') \gexec
+SELECT format('ALTER ROLE agrisense_gateway WITH LOGIN PASSWORD %L', :'gateway_password') \gexec
+SELECT format('ALTER ROLE agrisense_farm WITH LOGIN PASSWORD %L', :'farm_password') \gexec
+SELECT format('ALTER ROLE agrisense_agronomy WITH LOGIN PASSWORD %L', :'agronomy_password') \gexec
+SELECT format('ALTER ROLE agrisense_finance WITH LOGIN PASSWORD %L', :'finance_password') \gexec
+SELECT format('ALTER ROLE agrisense_marketplace WITH LOGIN PASSWORD %L', :'marketplace_password') \gexec
+SELECT format('ALTER ROLE agrisense_analytics WITH LOGIN PASSWORD %L', :'analytics_password') \gexec
+SELECT format('ALTER ROLE agrisense_platform WITH LOGIN PASSWORD %L', :'platform_password') \gexec

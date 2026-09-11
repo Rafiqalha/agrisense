@@ -1,23 +1,92 @@
+x-runtime-env: &runtime-env
+  APP_ENV: development
+  # Fail closed: env_file may contain a host/owner URL. DB-backed services must
+  # explicitly override this with their dedicated least-privilege role.
+  DATABASE_URL: ""
+  REDIS_URL: redis://redis:6379
+  NATS_URL: nats://nats:4222
+  BRAIN_SERVICE_URL: http://brain-service:${BRAIN_SERVICE_PORT:-3002}
+  FARM_SERVICE_URL: http://farm-service:${FARM_SERVICE_PORT:-3003}
+  AGRONOMY_SERVICE_URL: http://agronomy-service:${AGRONOMY_SERVICE_PORT:-3004}
+  FINANCE_SERVICE_URL: http://finance-service:${FINANCE_SERVICE_PORT:-3005}
+  MARKETPLACE_SERVICE_URL: http://marketplace-service:${MARKETPLACE_SERVICE_PORT:-3006}
+  AI_SERVICE_URL: http://ai-service:${AI_SERVICE_PORT:-3008}
+  PLATFORM_SERVICE_URL: http://platform-service:${PLATFORM_SERVICE_PORT:-3009}
+  MCP_REGISTRY_URL: http://brain-service:${BRAIN_SERVICE_PORT:-3002}/mcp
+
+x-rust-service: &rust-service
+  image: agrisense-local:dev
+  build:
+    context: .
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  env_file: .env
+
 services:
   # ─── Core Infrastructure ──────────────────────────────────────────────────────
   postgres:
-    image: pgvector/pgvector:pg16
+    image: agrisense-postgres-local:pg16
+    build:
+      context: .
+      dockerfile: infrastructure/postgres/Dockerfile
     container_name: agrisense-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: agrisense
-      POSTGRES_PASSWORD: secret
-      POSTGRES_DB: agrisense
+      POSTGRES_USER: ${POSTGRES_USER:-agrisense}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+      POSTGRES_DB: ${POSTGRES_DB:-agrisense}
     ports:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./infrastructure/postgres/schemas:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U agrisense -d agrisense"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agrisense} -d ${POSTGRES_DB:-agrisense}"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  db-migrate:
+    image: agrisense-postgres-local:pg16
+    build:
+      context: .
+      dockerfile: infrastructure/postgres/Dockerfile
+    restart: "no"
+    environment:
+      PGUSER: ${POSTGRES_USER:-agrisense}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-secret}
+      PGDATABASE: ${POSTGRES_DB:-agrisense}
+      PGHOST: postgres
+      BRAIN_DB_PASSWORD: ${BRAIN_DB_PASSWORD:-brain-local-only}
+      GATEWAY_DB_PASSWORD: ${GATEWAY_DB_PASSWORD:-gateway-local-only}
+      FARM_DB_PASSWORD: ${FARM_DB_PASSWORD:-farm-local-only}
+      AGRONOMY_DB_PASSWORD: ${AGRONOMY_DB_PASSWORD:-agronomy-local-only}
+      FINANCE_DB_PASSWORD: ${FINANCE_DB_PASSWORD:-finance-local-only}
+      MARKETPLACE_DB_PASSWORD: ${MARKETPLACE_DB_PASSWORD:-marketplace-local-only}
+      ANALYTICS_DB_PASSWORD: ${ANALYTICS_DB_PASSWORD:-analytics-local-only}
+      PLATFORM_DB_PASSWORD: ${PLATFORM_DB_PASSWORD:-platform-local-only}
+    volumes:
+      - ./infrastructure/postgres/migrations:/migrations:ro
+    command:
+      - /bin/sh
+      - -ec
+      - >-
+        for file in /migrations/*.sql; do
+          echo "Applying $$file";
+          psql -v ON_ERROR_STOP=1 -f "$$file";
+        done;
+        psql -v ON_ERROR_STOP=1
+        -v brain_password="$$BRAIN_DB_PASSWORD"
+        -v gateway_password="$$GATEWAY_DB_PASSWORD"
+        -v farm_password="$$FARM_DB_PASSWORD"
+        -v agronomy_password="$$AGRONOMY_DB_PASSWORD"
+        -v finance_password="$$FINANCE_DB_PASSWORD"
+        -v marketplace_password="$$MARKETPLACE_DB_PASSWORD"
+        -v analytics_password="$$ANALYTICS_DB_PASSWORD"
+        -v platform_password="$$PLATFORM_DB_PASSWORD"
+        -f /migrations/configure-runtime-roles.psql
+    depends_on:
+      postgres: { condition: service_healthy }
 
   redis:
     image: redis:7-alpine
@@ -48,139 +117,185 @@ services:
       - nats-data:/data
       - ./infrastructure/nats/nats-server.conf:/etc/nats/nats-server.conf:ro
     healthcheck:
-      test: ["CMD", "nats-server", "--version"]
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8222/healthz >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   # ─── Rust Services ────────────────────────────────────────────────────────────
   brain-service:
-    build:
-      context: .
-      dockerfile: services/brain-service/Dockerfile
+    <<: *rust-service
+    command: ["/usr/local/bin/brain-service"]
     container_name: agrisense-brain
-    restart: unless-stopped
-    env_file: .env
     environment:
-      - APP_ENV=development
+      <<: *runtime-env
+      DATABASE_URL: postgres://agrisense_brain:${BRAIN_DB_PASSWORD:-brain-local-only}@postgres:5432/${POSTGRES_DB:-agrisense}
+      BRAIN_FARM_TOKEN: ${BRAIN_FARM_TOKEN:-brain-farm-local-only-change-me-32bytes}
     ports:
-      - "3002:3002"
+      - "${BRAIN_SERVICE_PORT:-3002}:${BRAIN_SERVICE_PORT:-3002}"
     depends_on:
-      postgres: { condition: service_healthy }
+      db-migrate: { condition: service_completed_successfully }
       redis:    { condition: service_healthy }
       nats:     { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:$${BRAIN_SERVICE_PORT:-3002}/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
     profiles: ["services", "all"]
 
   farm-service:
-    build:
-      context: .
-      dockerfile: services/farm-service/Dockerfile
+    <<: *rust-service
+    command: ["/usr/local/bin/farm-service"]
     container_name: agrisense-farm
-    restart: unless-stopped
-    env_file: .env
+    environment:
+      <<: *runtime-env
+      DATABASE_URL: postgres://agrisense_farm:${FARM_DB_PASSWORD:-farm-local-only}@postgres:5432/${POSTGRES_DB:-agrisense}
+      BRAIN_FARM_TOKEN: ${BRAIN_FARM_TOKEN:-brain-farm-local-only-change-me-32bytes}
     ports:
-      - "3003:3003"
+      - "${FARM_SERVICE_PORT:-3003}:${FARM_SERVICE_PORT:-3003}"
     depends_on:
-      postgres: { condition: service_healthy }
+      db-migrate: { condition: service_completed_successfully }
       nats:     { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:$${FARM_SERVICE_PORT:-3003}/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
     profiles: ["services", "all"]
 
   agronomy-service:
-    build:
-      context: .
-      dockerfile: services/agronomy-service/Dockerfile
+    <<: *rust-service
+    command: ["/usr/local/bin/agronomy-service"]
     container_name: agrisense-agronomy
-    restart: unless-stopped
-    env_file: .env
+    environment:
+      <<: *runtime-env
+      DATABASE_URL: postgres://agrisense_agronomy:${AGRONOMY_DB_PASSWORD:-agronomy-local-only}@postgres:5432/${POSTGRES_DB:-agrisense}
     ports:
-      - "3004:3004"
+      - "${AGRONOMY_SERVICE_PORT:-3004}:${AGRONOMY_SERVICE_PORT:-3004}"
     depends_on:
-      postgres: { condition: service_healthy }
+      db-migrate: { condition: service_completed_successfully }
       nats:     { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:$${AGRONOMY_SERVICE_PORT:-3004}/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
     profiles: ["services", "all"]
 
   finance-service:
-    build:
-      context: .
-      dockerfile: services/finance-service/Dockerfile
+    <<: *rust-service
+    command: ["/usr/local/bin/finance-service"]
     container_name: agrisense-finance
-    restart: unless-stopped
-    env_file: .env
+    environment:
+      <<: *runtime-env
+      DATABASE_URL: postgres://agrisense_finance:${FINANCE_DB_PASSWORD:-finance-local-only}@postgres:5432/${POSTGRES_DB:-agrisense}
     ports:
-      - "3005:3005"
+      - "${FINANCE_SERVICE_PORT:-3005}:${FINANCE_SERVICE_PORT:-3005}"
     depends_on:
-      postgres: { condition: service_healthy }
+      db-migrate: { condition: service_completed_successfully }
       nats:     { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:$${FINANCE_SERVICE_PORT:-3005}/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
     profiles: ["services", "all"]
 
   marketplace-service:
-    build:
-      context: .
-      dockerfile: services/marketplace-service/Dockerfile
+    <<: *rust-service
+    command: ["/usr/local/bin/marketplace-service"]
     container_name: agrisense-marketplace
-    restart: unless-stopped
-    env_file: .env
+    environment:
+      <<: *runtime-env
+      DATABASE_URL: postgres://agrisense_marketplace:${MARKETPLACE_DB_PASSWORD:-marketplace-local-only}@postgres:5432/${POSTGRES_DB:-agrisense}
     ports:
-      - "3006:3006"
+      - "${MARKETPLACE_SERVICE_PORT:-3006}:${MARKETPLACE_SERVICE_PORT:-3006}"
     depends_on:
-      postgres: { condition: service_healthy }
+      db-migrate: { condition: service_completed_successfully }
       nats:     { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:$${MARKETPLACE_SERVICE_PORT:-3006}/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
     profiles: ["services", "all"]
 
   analytics-service:
-    build:
-      context: .
-      dockerfile: services/analytics-service/Dockerfile
+    <<: *rust-service
+    command: ["/usr/local/bin/analytics-service"]
     container_name: agrisense-analytics
-    restart: unless-stopped
-    env_file: .env
+    environment:
+      <<: *runtime-env
+      DATABASE_URL: postgres://agrisense_analytics:${ANALYTICS_DB_PASSWORD:-analytics-local-only}@postgres:5432/${POSTGRES_DB:-agrisense}
     ports:
-      - "3007:3007"
+      - "${ANALYTICS_SERVICE_PORT:-3007}:${ANALYTICS_SERVICE_PORT:-3007}"
     depends_on:
-      postgres: { condition: service_healthy }
+      db-migrate: { condition: service_completed_successfully }
       nats:     { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:$${ANALYTICS_SERVICE_PORT:-3007}/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
     profiles: ["services", "all"]
 
   ai-service:
-    build:
-      context: .
-      dockerfile: services/ai-service/Dockerfile
+    <<: *rust-service
+    command: ["/usr/local/bin/ai-service"]
     container_name: agrisense-ai
-    restart: unless-stopped
-    env_file: .env
+    environment:
+      <<: *runtime-env
     ports:
-      - "3008:3008"
+      - "${AI_SERVICE_PORT:-3008}:${AI_SERVICE_PORT:-3008}"
     depends_on:
-      postgres: { condition: service_healthy }
+      db-migrate: { condition: service_completed_successfully }
       redis:    { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:$${AI_SERVICE_PORT:-3008}/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
     profiles: ["services", "all"]
 
   platform-service:
-    build:
-      context: .
-      dockerfile: services/platform-service/Dockerfile
+    <<: *rust-service
+    command: ["/usr/local/bin/platform-service"]
     container_name: agrisense-platform
-    restart: unless-stopped
-    env_file: .env
+    environment:
+      <<: *runtime-env
+      DATABASE_URL: postgres://agrisense_platform:${PLATFORM_DB_PASSWORD:-platform-local-only}@postgres:5432/${POSTGRES_DB:-agrisense}
     ports:
-      - "3009:3009"
+      - "${PLATFORM_SERVICE_PORT:-3009}:${PLATFORM_SERVICE_PORT:-3009}"
     depends_on:
-      postgres: { condition: service_healthy }
+      db-migrate: { condition: service_completed_successfully }
       redis:    { condition: service_healthy }
       nats:     { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:$${PLATFORM_SERVICE_PORT:-3009}/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
     profiles: ["services", "all"]
 
   whatsapp-gateway:
-    build:
-      context: .
-      dockerfile: apps/whatsapp-gateway/Dockerfile
+    <<: *rust-service
+    command: ["/usr/local/bin/whatsapp-gateway"]
     container_name: agrisense-gateway
-    restart: unless-stopped
-    env_file: .env
+    environment:
+      <<: *runtime-env
+      DATABASE_URL: postgres://agrisense_gateway:${GATEWAY_DB_PASSWORD:-gateway-local-only}@postgres:5432/${POSTGRES_DB:-agrisense}
     ports:
-      - "3001:3001"
+      - "${WHATSAPP_GATEWAY_PORT:-3001}:${WHATSAPP_GATEWAY_PORT:-3001}"
     depends_on:
-      brain-service: { condition: service_started }
+      db-migrate: { condition: service_completed_successfully }
+      brain-service: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:$${WHATSAPP_GATEWAY_PORT:-3001}/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
     profiles: ["services", "all"]
 
   # ─── Monitoring Stack ─────────────────────────────────────────────────────────

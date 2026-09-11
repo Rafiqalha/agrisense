@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub struct AppConfig {
     #[serde(default = "default_port")]
     pub port: u16,
@@ -12,30 +12,36 @@ pub struct AppConfig {
     pub ai_provider: String,
     #[serde(default)]
     pub gemini_api_key: String,
-    #[serde(default = "default_gemini_model")]
+    #[serde(default = "default_model")]
     pub gemini_model: String,
-    #[serde(default)]
-    pub openai_api_key: String,
-    #[serde(default)]
-    pub anthropic_api_key: String,
-    #[serde(default = "default_local_url")]
-    pub local_model_url: String,
-    #[serde(default)]
-    pub safety_enabled: bool,
+    pub brain_ai_token: String,
 }
 
-fn default_port() -> u16 { 3008 }
-fn default_log_level() -> String { "info".into() }
-fn default_log_format() -> String { "pretty".into() }
-fn default_provider() -> String { "gemini".into() }
-fn default_gemini_model() -> String { "gemini-2.0-flash".into() }
-fn default_local_url() -> String { "http://localhost:11434".into() }
+fn default_port() -> u16 {
+    3008
+}
+fn default_log_level() -> String {
+    "info".into()
+}
+fn default_log_format() -> String {
+    "pretty".into()
+}
+fn default_provider() -> String {
+    "gemini".into()
+}
+fn default_model() -> String {
+    "gemini-3.6-flash".into()
+}
 
 impl AppConfig {
     pub fn load() -> anyhow::Result<Self> {
-        let cfg = config::Config::builder()
-            .add_source(config::Environment::default().separator("_"))
-            .build()?;
-        Ok(cfg.try_deserialize()?)
+        let mut cfg: Self = config::Config::builder()
+            .add_source(config::Environment::default().try_parsing(true))
+            .build()?
+            .try_deserialize()?;
+        if let Ok(port) = std::env::var("AI_SERVICE_PORT") {
+            cfg.port = port.parse()?;
+        }
+        Ok(cfg)
     }
 }

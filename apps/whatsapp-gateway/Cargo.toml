@@ -26,8 +26,10 @@ dotenvy     = { workspace = true }
 
 shared-types        = { workspace = true }
 shared-events       = { workspace = true }
-shared-cache        = { workspace = true }
+shared-db           = { workspace = true }
+shared-auth         = { workspace = true }
 shared-observability = { workspace = true }
+sqlx                = { workspace = true }
 
 # Webhook signature verification
 hmac  = "0.12"
@@ -36,4 +38,3 @@ hex   = "0.4"
 
 # Media handling (data URI encoding)
 base64 = "0.22"
-

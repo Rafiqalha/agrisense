@@ -1,4 +1,5 @@
 //! AI-layer caching — semantic, response, and embedding caches.
+#![allow(dead_code)] // Capability scaffold; activated incrementally by milestones.
 //!
 //! Rules:
 //!   CACHEABLE: agronomy knowledge, disease info, fertilizer recommendations
@@ -9,11 +10,9 @@
 //!   ├── yes → return cached response
 //!   └── no  → AI → cache response → return
 
-pub mod response_cache;
 pub mod embedding_cache;
+pub mod response_cache;
 pub mod semantic_cache;
-
-use serde::{Deserialize, Serialize};
 
 /// Determines if a query result should be cached
 #[derive(Debug, Clone, PartialEq)]
@@ -42,7 +41,9 @@ impl CachePolicy {
             "ASK_WEATHER" => Self::ShortTerm { ttl_secs: 3600 }, // 1 hour
 
             // Long cache — agricultural knowledge
-            "REPORT_DISEASE" | "ASK_FERTILIZER_RECOMMENDATION" => Self::LongTerm { ttl_secs: 86400 }, // 24 hours
+            "REPORT_DISEASE" | "ASK_FERTILIZER_RECOMMENDATION" => {
+                Self::LongTerm { ttl_secs: 86400 }
+            } // 24 hours
 
             // Default: short cache
             _ => Self::ShortTerm { ttl_secs: 1800 }, // 30 min

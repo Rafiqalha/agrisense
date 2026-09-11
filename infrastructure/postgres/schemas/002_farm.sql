@@ -7,7 +7,7 @@ CREATE EXTENSION IF NOT EXISTS postgis;   -- for geo queries
 
 CREATE TYPE farm.crop_type AS ENUM (
     'rice', 'corn', 'soybean', 'sugarcane', 'cassava',
-    'tomato', 'chili', 'cabbage', 'shallot', 'other'
+    'tomato', 'chili', 'cabbage', 'shallot', 'melon', 'other'
 );
 
 CREATE TYPE farm.farm_size AS ENUM ('small', 'medium', 'large', 'enterprise');
@@ -44,6 +44,9 @@ CREATE TABLE farm.crops (
     farm_id         UUID NOT NULL REFERENCES farm.farms(id),
     crop_type       farm.crop_type NOT NULL,
     seed_variety    VARCHAR(255),
+    cultivation_system VARCHAR(50),
+    cultivation_unit_count INTEGER CHECK (cultivation_unit_count IS NULL OR cultivation_unit_count > 0),
+    area_per_unit_hectares DECIMAL(10,4) CHECK (area_per_unit_hectares IS NULL OR area_per_unit_hectares > 0),
     area_hectares   DECIMAL(10,4),
     planted_at      DATE NOT NULL,
     expected_harvest_at DATE,
@@ -59,14 +62,25 @@ CREATE TABLE farm.activities (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     farm_id         UUID NOT NULL REFERENCES farm.farms(id),
     crop_id         UUID REFERENCES farm.crops(id),
-    activity_type   VARCHAR(100) NOT NULL,
+    activity_type   VARCHAR(100) NOT NULL CHECK (activity_type IN (
+                        'watering', 'fertilizing', 'spraying', 'pruning', 'inspection'
+                    )),
     description     TEXT,
     quantity        DECIMAL(10,3),
     unit            VARCHAR(50),
     cost_idr        BIGINT,
     performed_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    source_request_id UUID,
+    recorded_via    VARCHAR(30) NOT NULL DEFAULT 'manual'
+                    CHECK (recorded_via IN ('manual', 'whatsapp', 'api')),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE UNIQUE INDEX uq_farm_activities_source_request
+    ON farm.activities (source_request_id)
+    WHERE source_request_id IS NOT NULL;
+CREATE INDEX idx_farm_activities_owner_time
+    ON farm.activities (farm_id, performed_at DESC);
 
 CREATE TABLE farm.harvests (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

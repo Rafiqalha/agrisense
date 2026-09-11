@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use shared_types::{FarmerId, ConversationId, AgentRunId};
+use shared_types::{AgentRunId, ConversationId, FarmerId};
 
 // ─── AI Domain Events ─────────────────────────────────────────────────────────
 // NATS subjects: agrisense.ai.*

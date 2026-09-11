@@ -2,8 +2,8 @@
 //! - LlamaGuardProvider: local Llama Guard model via Ollama
 //! - NeMoGuardrailsProvider: NVIDIA NeMo Guardrails (future)
 
+use super::{ModerationCategory, ModerationRequest, ModerationResponse, SafetyService};
 use async_trait::async_trait;
-use super::{SafetyService, ModerationRequest, ModerationResponse, ModerationCategory};
 
 /// Llama Guard via local Ollama instance
 pub struct LlamaGuardProvider {
@@ -13,13 +13,18 @@ pub struct LlamaGuardProvider {
 
 impl LlamaGuardProvider {
     pub fn new(base_url: String) -> Self {
-        Self { base_url, client: reqwest::Client::new() }
+        Self {
+            base_url,
+            client: reqwest::Client::new(),
+        }
     }
 }
 
 #[async_trait]
 impl SafetyService for LlamaGuardProvider {
-    fn provider_name(&self) -> &str { "llama-guard" }
+    fn provider_name(&self) -> &str {
+        "llama-guard"
+    }
 
     async fn moderate(&self, request: ModerationRequest) -> anyhow::Result<ModerationResponse> {
         let prompt = format!(
@@ -36,7 +41,8 @@ impl SafetyService for LlamaGuardProvider {
         });
 
         let start = std::time::Instant::now();
-        let resp: serde_json::Value = self.client
+        let resp: serde_json::Value = self
+            .client
             .post(format!("{}/api/generate", self.base_url))
             .json(&body)
             .send()
@@ -71,7 +77,9 @@ pub struct NoOpSafetyProvider;
 
 #[async_trait]
 impl SafetyService for NoOpSafetyProvider {
-    fn provider_name(&self) -> &str { "noop-safety" }
+    fn provider_name(&self) -> &str {
+        "noop-safety"
+    }
 
     async fn moderate(&self, _request: ModerationRequest) -> anyhow::Result<ModerationResponse> {
         Ok(ModerationResponse {

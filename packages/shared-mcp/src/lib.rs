@@ -85,10 +85,10 @@ pub struct McpServiceManifest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum McpPermission {
-    Public,         // any agent can call
-    FarmerOwned,    // only when farmer_id matches
-    AdminOnly,      // internal tools
-    PartnerOnly,    // kios/supplier/bank
+    Public,      // any agent can call
+    FarmerOwned, // only when farmer_id matches
+    AdminOnly,   // internal tools
+    PartnerOnly, // kios/supplier/bank
 }
 
 // ─── Error ────────────────────────────────────────────────────────────────────

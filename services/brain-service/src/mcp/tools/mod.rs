@@ -10,7 +10,7 @@
 use serde_json::json;
 use shared_mcp::McpTool;
 
-use crate::context::{FarmerContext, friendly_crop_name};
+use crate::context::{friendly_crop_name, FarmerContext};
 
 /// Tool definitions registered into the MCP registry at startup.
 /// Other services will register their own tools via /mcp/register later.
@@ -66,6 +66,9 @@ fn get_current_crop(ctx: &FarmerContext) -> serde_json::Value {
             "age_days": crop.age_days,
             "status": crop.status,
             "area_hectares": crop.area_hectares,
+            "cultivation_system": crop.cultivation_system,
+            "cultivation_unit_count": crop.cultivation_unit_count,
+            "area_per_unit_hectares": crop.area_per_unit_hectares,
             "expected_harvest_at": crop.expected_harvest_at.map(|d| d.to_string()),
         }
     })
@@ -85,6 +88,9 @@ mod tests {
             age_days: 32,
             status: "growing".into(),
             area_hectares: Some("0.0500".into()),
+            cultivation_system: Some("greenhouse".into()),
+            cultivation_unit_count: Some(10),
+            area_per_unit_hectares: Some("0.0050".into()),
             expected_harvest_at: None,
         }
     }

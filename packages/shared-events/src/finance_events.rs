@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use shared_types::{FarmerId, TransactionId, Money};
+use shared_types::{FarmerId, Money, TransactionId};
 
 // ─── Finance Domain Events ────────────────────────────────────────────────────
 // NATS subjects: agrisense.finance.*
@@ -27,7 +27,7 @@ pub struct LoanRequested {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LoanType {
-    Kur,        // Kredit Usaha Rakyat
+    Kur, // Kredit Usaha Rakyat
     Commercial,
     MicroLoan,
 }

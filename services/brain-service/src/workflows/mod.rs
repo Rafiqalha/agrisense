@@ -1,4 +1,5 @@
 //! Durable Workflow Engine
+#![allow(dead_code)] // Workflow definitions are intentionally staged for a later milestone.
 //!
 //! Multi-step workflows persist their state to Postgres.
 //! This means workflows survive crashes and can be resumed.
@@ -14,13 +15,13 @@
 //!
 //! If Step 3 fails → workflow paused → retry from Step 3 (not from Step 1).
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
 pub mod diagnosis;
-pub mod onboarding;
 pub mod expense;
+pub mod onboarding;
 
 // ─── Workflow Type Registry ───────────────────────────────────────────────────
 
@@ -123,11 +124,7 @@ pub enum WorkflowStatus {
 
 impl WorkflowRun {
     /// Create a new workflow run
-    pub fn new(
-        conversation_id: Uuid,
-        farmer_id: Uuid,
-        workflow_type: WorkflowType,
-    ) -> Self {
+    pub fn new(conversation_id: Uuid, farmer_id: Uuid, workflow_type: WorkflowType) -> Self {
         let steps = workflow_type.steps();
         let current = steps[0].to_string();
         let remaining: Vec<String> = steps[1..].iter().map(|s| s.to_string()).collect();
@@ -179,6 +176,9 @@ impl WorkflowRun {
     }
 
     pub fn is_active(&self) -> bool {
-        matches!(self.status, WorkflowStatus::Running | WorkflowStatus::Paused)
+        matches!(
+            self.status,
+            WorkflowStatus::Running | WorkflowStatus::Paused
+        )
     }
 }

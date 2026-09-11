@@ -18,6 +18,7 @@ Subject format: `agrisense.<domain>.<event_type>`
 | FarmRegistered | `agrisense.farm.farm_registered` | farm_id, farmer_id, location, area |
 | CropPlanted | `agrisense.farm.crop_planted` | crop_id, farm_id, crop_type |
 | HarvestRecorded | `agrisense.farm.harvest_recorded` | harvest_id, yield_kg, quality |
+| FarmActivityRecorded | `agrisense.farm.activity_recorded` | activity_id, farm_id, crop_id, farmer_id, activity_type, description, quantity, unit, performed_at |
 | InventoryLow | `agrisense.farm.inventory_low` | farm_id, item, quantity |
 
 ## Agronomy Events (`agrisense.agronomy.*`)

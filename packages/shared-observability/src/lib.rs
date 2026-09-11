@@ -14,8 +14,8 @@ pub enum LogFormat {
 }
 
 pub fn init(config: ObservabilityConfig) {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(&config.log_level));
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&config.log_level));
 
     match config.log_format {
         LogFormat::Json => {

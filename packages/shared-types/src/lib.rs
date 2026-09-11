@@ -71,6 +71,7 @@ pub enum CropType {
     Chili,
     Cabbage,
     Shallot,
+    Melon,
     Other(String),
 }
 
@@ -86,9 +87,9 @@ pub enum FarmerStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FarmSize {
-    Small,   // < 0.5 ha
-    Medium,  // 0.5 - 2 ha
-    Large,   // 2 - 10 ha
+    Small,      // < 0.5 ha
+    Medium,     // 0.5 - 2 ha
+    Large,      // 2 - 10 ha
     Enterprise, // > 10 ha
 }
 
@@ -161,7 +162,9 @@ pub struct PhoneNumber {
 
 impl PhoneNumber {
     pub fn new(value: impl Into<String>) -> Self {
-        Self { value: value.into() }
+        Self {
+            value: value.into(),
+        }
     }
 }
 

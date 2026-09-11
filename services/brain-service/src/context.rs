@@ -18,6 +18,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub struct FarmerContext {
     /// WhatsApp phone number (E.164) — the lookup key for the WhatsApp channel.
+    #[allow(dead_code)] // Retained for channel-aware authorization and auditing.
     pub phone: String,
     /// identity.users.id — `None` when the farmer is not registered yet.
     pub user_id: Option<Uuid>,
@@ -38,6 +39,9 @@ pub struct CropInfo {
     pub status: String,
     /// Area as TEXT (avoids BigDecimal dependency for the demo slice).
     pub area_hectares: Option<String>,
+    pub cultivation_system: Option<String>,
+    pub cultivation_unit_count: Option<i32>,
+    pub area_per_unit_hectares: Option<String>,
     pub expected_harvest_at: Option<NaiveDate>,
 }
 
@@ -46,17 +50,12 @@ pub struct CropInfo {
 /// Returns a context with `user_id: None` (gracefully) when the phone is not
 /// registered — the agent loop must still respond politely in that case.
 pub async fn build_farmer_context(pool: &shared_db::DbPool, phone: &str) -> Result<FarmerContext> {
-    let row = sqlx::query(
-        "SELECT u.id AS user_id, u.name AS user_name, f.name AS farm_name
-         FROM identity.users u
-         LEFT JOIN farm.farmers fr ON fr.user_id = u.id
-         LEFT JOIN farm.farms f ON f.farmer_id = fr.id
-         WHERE u.phone = $1
-         LIMIT 1",
-    )
-    .bind(phone)
-    .fetch_optional(pool)
-    .await?;
+    let mut tx = pool.begin().await?;
+    set_local(&mut tx, "app.current_phone", phone).await?;
+    let row = sqlx::query("SELECT * FROM identity.whatsapp_farmer_context()")
+        .fetch_optional(&mut *tx)
+        .await?;
+    tx.commit().await?;
 
     let Some(row) = row else {
         return Ok(FarmerContext {
@@ -68,57 +67,71 @@ pub async fn build_farmer_context(pool: &shared_db::DbPool, phone: &str) -> Resu
         });
     };
 
-    let user_id: Option<Uuid> = row.try_get("user_id").ok();
-    let farmer_name: Option<String> = row.try_get("user_name").ok();
-    let farm_name: Option<String> = row.try_get("farm_name").ok();
-
-    let crop = if user_id.is_some() {
-        fetch_current_crop(pool, phone).await?
-    } else {
-        None
-    };
-
-    Ok(FarmerContext {
-        phone: phone.to_string(),
-        user_id,
-        farmer_name,
-        farm_name,
-        crop,
-    })
+    context_from_row(row)
 }
 
-async fn fetch_current_crop(pool: &shared_db::DbPool, phone: &str) -> Result<Option<CropInfo>> {
-    let row = sqlx::query(
-        "SELECT c.crop_type::TEXT, c.seed_variety, c.planted_at, c.status,
-                c.area_hectares::TEXT, c.expected_harvest_at
-         FROM farm.crops c
-         JOIN farm.farms f ON f.id = c.farm_id
-         JOIN farm.farmers fr ON fr.id = f.farmer_id
-         JOIN identity.users u ON u.id = fr.user_id
-         WHERE u.phone = $1 AND c.status = 'growing'
-         ORDER BY c.planted_at DESC
-         LIMIT 1",
+/// Build context from the authenticated identity rather than caller-provided
+/// request data. Used by the public MCP call boundary.
+pub async fn build_farmer_context_by_user_id(
+    pool: &shared_db::DbPool,
+    authenticated_user_id: Uuid,
+) -> Result<FarmerContext> {
+    let mut tx = pool.begin().await?;
+    set_local(
+        &mut tx,
+        "app.current_user_id",
+        &authenticated_user_id.to_string(),
     )
-    .bind(phone)
-    .fetch_optional(pool)
     .await?;
+    let row = sqlx::query("SELECT * FROM identity.user_context()")
+        .fetch_optional(&mut *tx)
+        .await?;
+    tx.commit().await?;
 
-    let Some(row) = row else {
-        return Ok(None);
-    };
+    let row = row.ok_or_else(|| anyhow::anyhow!("authenticated user does not exist"))?;
+    context_from_row(row)
+}
 
-    let planted_at: NaiveDate = row.try_get("planted_at")?;
-    let age_days = age_in_days(planted_at, Utc::now().date_naive());
+async fn set_local(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    key: &str,
+    value: &str,
+) -> Result<()> {
+    sqlx::query("SELECT set_config($1, $2, TRUE)")
+        .bind(key)
+        .bind(value)
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
+}
 
-    Ok(Some(CropInfo {
-        crop_type: row.try_get("crop_type")?,
-        seed_variety: row.try_get("seed_variety").ok(),
-        planted_at,
-        age_days,
-        status: row.try_get("status")?,
-        area_hectares: row.try_get("area_hectares").ok(),
-        expected_harvest_at: row.try_get("expected_harvest_at").ok(),
-    }))
+fn context_from_row(row: sqlx::postgres::PgRow) -> Result<FarmerContext> {
+    let phone: String = row.try_get("phone")?;
+    let planted_at: Option<NaiveDate> = row.try_get("planted_at")?;
+    let crop = planted_at
+        .map(|planted_at| {
+            Ok::<CropInfo, anyhow::Error>(CropInfo {
+                crop_type: row.try_get("crop_type")?,
+                seed_variety: row.try_get("seed_variety")?,
+                planted_at,
+                age_days: age_in_days(planted_at, Utc::now().date_naive()),
+                status: row.try_get("crop_status")?,
+                area_hectares: row.try_get("area_hectares")?,
+                cultivation_system: row.try_get("cultivation_system")?,
+                cultivation_unit_count: row.try_get("cultivation_unit_count")?,
+                area_per_unit_hectares: row.try_get("area_per_unit_hectares")?,
+                expected_harvest_at: row.try_get("expected_harvest_at")?,
+            })
+        })
+        .transpose()?;
+
+    Ok(FarmerContext {
+        phone,
+        user_id: Some(row.try_get("user_id")?),
+        farmer_name: row.try_get("farmer_name")?,
+        farm_name: row.try_get("farm_name")?,
+        crop,
+    })
 }
 
 /// Deterministic crop age in days (pure, testable).
@@ -126,12 +139,10 @@ pub fn age_in_days(planted: NaiveDate, today: NaiveDate) -> i64 {
     (today - planted).num_days()
 }
 
-/// Human-friendly crop name: prefer seed variety for 'other' crops
-/// (e.g. melon is stored as crop_type='other' + seed_variety='Melon').
+/// Human-friendly crop name: prefer the free-text label for uncatalogued crops.
 pub fn friendly_crop_name(crop: &CropInfo) -> String {
     if crop.crop_type == "other" {
-        crop
-            .seed_variety
+        crop.seed_variety
             .clone()
             .unwrap_or_else(|| "tanaman".to_string())
     } else {
@@ -163,6 +174,9 @@ mod tests {
             age_days: 32,
             status: "growing".into(),
             area_hectares: None,
+            cultivation_system: None,
+            cultivation_unit_count: None,
+            area_per_unit_hectares: None,
             expected_harvest_at: None,
         };
         assert_eq!(friendly_crop_name(&crop), "Melon (Golden Langkawi)");
@@ -177,6 +191,9 @@ mod tests {
             age_days: 32,
             status: "growing".into(),
             area_hectares: None,
+            cultivation_system: None,
+            cultivation_unit_count: None,
+            area_per_unit_hectares: None,
             expected_harvest_at: None,
         };
         assert_eq!(friendly_crop_name(&crop), "rice");

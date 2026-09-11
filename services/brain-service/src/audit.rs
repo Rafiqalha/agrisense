@@ -35,33 +35,31 @@ pub async fn get_or_create_conversation(
     farmer_id: Uuid,
     channel: &str,
 ) -> Result<Uuid> {
-    let existing: Option<(Uuid,)> = sqlx::query_as(
-        "SELECT id FROM ai.conversations
-         WHERE farmer_id = $1 AND channel = $2
-         ORDER BY started_at DESC
-         LIMIT 1",
+    let mut tx = pool.begin().await?;
+    set_tenant(&mut tx, farmer_id).await?;
+    let id: Uuid = sqlx::query_scalar(
+        "INSERT INTO ai.conversations (farmer_id, channel, last_message_at, message_count)
+         VALUES ($1, $2, NOW(), 1)
+         ON CONFLICT (farmer_id, channel) DO UPDATE
+         SET last_message_at = NOW(),
+             message_count = ai.conversations.message_count + 1
+         RETURNING id",
     )
     .bind(farmer_id)
     .bind(channel)
-    .fetch_optional(pool)
+    .fetch_one(&mut *tx)
     .await?;
-
-    if let Some((id,)) = existing {
-        return Ok(id);
-    }
-
-    let id = Uuid::new_v4();
-    sqlx::query("INSERT INTO ai.conversations (id, farmer_id, channel) VALUES ($1, $2, $3)")
-        .bind(id)
-        .bind(farmer_id)
-        .bind(channel)
-        .execute(pool)
-        .await?;
+    tx.commit().await?;
     Ok(id)
 }
 
 /// Persist one agent run to `ai.agent_runs` (audit + cost + quality tracking).
 pub async fn insert_agent_run(pool: &shared_db::DbPool, run: &AgentRunAudit) -> Result<()> {
+    let mut tx = pool.begin().await?;
+    set_tenant(&mut tx, run.farmer_id).await?;
+    // A Rust Vec bound directly is encoded by SQLx as a PostgreSQL jsonb[].
+    // Wrap it as one JSON document because ai.agent_runs.tools_called is JSONB.
+    let tools_called = run.tools_called.as_ref().map(sqlx::types::Json);
     sqlx::query(
         r#"INSERT INTO ai.agent_runs
            (conversation_id, farmer_id, agent_type, input_intent, input_message, response,
@@ -76,11 +74,20 @@ pub async fn insert_agent_run(pool: &shared_db::DbPool, run: &AgentRunAudit) -> 
     .bind(&run.response)
     .bind(&run.model_provider)
     .bind(&run.model_name)
-    .bind(&run.tools_called)
+    .bind(tools_called)
     .bind(run.tools_called.as_ref().map(|t| t.len() as i16))
     .bind(run.latency_ms)
     .bind(run.success)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+async fn set_tenant(tx: &mut sqlx::Transaction<'_, sqlx::Postgres>, user_id: Uuid) -> Result<()> {
+    sqlx::query("SELECT set_config('app.current_user_id', $1, TRUE)")
+        .bind(user_id.to_string())
+        .execute(&mut **tx)
+        .await?;
     Ok(())
 }

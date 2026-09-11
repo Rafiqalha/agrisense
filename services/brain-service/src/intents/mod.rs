@@ -36,7 +36,11 @@ impl IntentDetector {
         if lower.contains("stok") || lower.contains("stock") || lower.contains("sisa") {
             return Ok(Intent::CheckStock);
         }
-        if lower.contains("penyakit") || lower.contains("hama") || lower.contains("rusak") || lower.contains("layu") {
+        if lower.contains("penyakit")
+            || lower.contains("hama")
+            || lower.contains("rusak")
+            || lower.contains("layu")
+        {
             return Ok(Intent::ReportDisease);
         }
         if lower.contains("cuaca") || lower.contains("hujan") || lower.contains("kemarau") {
