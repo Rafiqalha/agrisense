@@ -58,39 +58,82 @@ fn extract_title(html: &str) -> String {
     }
 }
 
+/// Extract readable text from HTML. Tags are dropped, whitespace is collapsed,
+/// and the bodies of `<script>`/`<style>` blocks are skipped entirely — their
+/// contents are code, not content, and would otherwise pollute the RAG corpus.
 fn extract_content(html: &str) -> String {
+    const MAX_CONTENT_BYTES: usize = 8000;
     let mut out = String::with_capacity(html.len().min(16384));
-    let mut in_tag = false;
     let mut pending_space = false;
-    for c in html.chars() {
-        match c {
-            '<' => {
-                in_tag = true;
-                pending_space = true;
+    // Set while inside a <script>/<style> block; skipped until the matching
+    // closing tag.
+    let mut skipping: Option<&'static str> = None;
+    let mut pos = 0usize;
+
+    while pos < html.len() && out.len() < MAX_CONTENT_BYTES {
+        let Some(open_rel) = html[pos..].find('<') else {
+            if skipping.is_none() {
+                push_text(&mut out, &mut pending_space, &html[pos..], MAX_CONTENT_BYTES);
             }
-            '>' => {
-                in_tag = false;
-            }
-            _ if in_tag => {}
-            _ if c.is_whitespace() => {
-                pending_space = true;
-            }
-            _ => {
-                if pending_space && !out.is_empty() {
-                    out.push(' ');
-                }
-                pending_space = false;
-                out.push(c);
-                if out.len() >= 8000 {
-                    break;
-                }
-            }
+            break;
+        };
+        let tag_start = pos + open_rel;
+        if skipping.is_none() {
+            push_text(
+                &mut out,
+                &mut pending_space,
+                &html[pos..tag_start],
+                MAX_CONTENT_BYTES,
+            );
         }
+        // A tag separates adjacent text nodes, so the next text starts a word.
+        pending_space = true;
+
+        let Some(close_rel) = html[tag_start..].find('>') else {
+            break;
+        };
+        let tag_end = tag_start + close_rel;
+        let tag = html[tag_start + 1..tag_end].trim();
+        let closing = tag.starts_with('/');
+        let name: String = tag
+            .trim_start_matches('/')
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric())
+            .collect::<String>()
+            .to_ascii_lowercase();
+
+        match skipping {
+            Some(expected) if closing && name == expected => skipping = None,
+            Some(_) => {}
+            None if !closing && name == "script" => skipping = Some("script"),
+            None if !closing && name == "style" => skipping = Some("style"),
+            None => {}
+        }
+        pos = tag_end + 1;
     }
+
     let trimmed = out.trim();
-    match trimmed.char_indices().nth(8000) {
+    match trimmed.char_indices().nth(MAX_CONTENT_BYTES) {
         Some((idx, _)) => trimmed[..idx].to_string(),
         None => trimmed.to_string(),
+    }
+}
+
+/// Append `text` to `out`, collapsing runs of whitespace into single spaces.
+fn push_text(out: &mut String, pending_space: &mut bool, text: &str, max_bytes: usize) {
+    for c in text.chars() {
+        if c.is_whitespace() {
+            *pending_space = true;
+            continue;
+        }
+        if *pending_space && !out.is_empty() {
+            out.push(' ');
+        }
+        *pending_space = false;
+        out.push(c);
+        if out.len() >= max_bytes {
+            return;
+        }
     }
 }
 
@@ -253,5 +296,37 @@ impl CrawlerPool {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn content_skips_script_and_style_bodies() {
+        let html = "<html><head><style>body{color:red}</style>\
+                    <SCRIPT>var x = 1;</SCRIPT></head>\
+                    <body><h1>Halo</h1><p>Jagung manis.</p></body></html>";
+        let content = extract_content(html);
+        assert!(content.contains("Halo"));
+        assert!(content.contains("Jagung manis."));
+        assert!(!content.contains("color:red"));
+        assert!(!content.contains("var x"));
+    }
+
+    #[test]
+    fn content_separates_adjacent_text_nodes() {
+        let content = extract_content("<p>Padi</p>\n\n<p>  Irigasi  </p>");
+        assert_eq!(content, "Padi Irigasi");
+    }
+
+    #[test]
+    fn title_is_extracted_with_collapsed_whitespace() {
+        assert_eq!(
+            extract_title("<title>  Beras   Lokal </title>"),
+            "Beras Lokal"
+        );
+        assert_eq!(extract_title("<html><body>no title</body></html>"), "Untitled");
     }
 }

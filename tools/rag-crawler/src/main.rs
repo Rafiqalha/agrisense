@@ -18,10 +18,12 @@ fn worker_count_from_env() -> usize {
     }
 }
 
+/// Output path for the RAG pool, relative to the current working directory
+/// (run from the repo root). Override with `RAG_POOL_PATH`.
 fn dataset_path() -> String {
     match std::env::var("RAG_POOL_PATH") {
         Ok(v) if !v.trim().is_empty() => v,
-        _ => r"D:\Backup E\Enterprise\Agrisense\dataset\agrisense_rag_pool.jsonl".to_string(),
+        _ => "dataset/agrisense_rag_pool.jsonl".to_string(),
     }
 }
 
