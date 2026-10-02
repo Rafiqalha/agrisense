@@ -22,7 +22,7 @@ brain-service (Orchestrator + MCP Registry)
 farm-service  agronomy   finance   platform
                 ↓
              ai-service (TextGeneration + VisionService)
-               ├── DeepSeek V4 Flash Vision (experimental)
+               ├── Gemini 3.6 Flash text + vision
                └── Speech / embeddings / RAG: unavailable (HTTP 501)
                         ↓
               analytics-service (event consumer)
@@ -41,7 +41,7 @@ supervisor → agronomist_agent
         ↓
 MCP tool: detect_disease (ai-service)
         ↓
-DeepSeek Vision analyzes image
+Gemini Vision analyzes image
         ↓
 MCP tool: recommend_fertilizer (agronomy-service)
         ↓

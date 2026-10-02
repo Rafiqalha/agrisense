@@ -158,6 +158,15 @@ agrisense/
 │   ├── shared-auth/          JWT + session management
 │   └── shared-observability/ OpenTelemetry + Prometheus + tracing
 │
+├── tools/
+│   └── rag-crawler/          Crawler korpus RAG (offline, bukan service runtime)
+│
+├── scripts/                  Pipeline RAG: unduh open data, ingest, sidecar (Python)
+│
+├── test-llm/                 Playground LLM lokal + uji retrieval RAG (Vite + React)
+│
+├── dataset/                  Data RAG hasil unduhan (lokal, tidak di-commit)
+│
 ├── contracts/
 │   ├── grpc/                 Protobuf service definitions
 │   ├── openapi/              REST API specs
@@ -239,10 +248,12 @@ audio ditolak. Nilai `confidence: 0.0` berarti confidence tidak tersedia,
 bukan probabilitas diagnosis.
 
 Speech transcription tetap ditangani ElevenLabs di gateway. Embedding,
-moderation khusus, dan RAG belum diimplementasikan untuk deployment Gemini ini;
-endpoint terkait mengembalikan HTTP 501. Tidak ada fallback ke DeepSeek,
-OpenAI, Anthropic, atau Ollama. Source provider lama hanya disimpan sebagai arsip
-dan tidak dikompilasi.
+moderation khusus, dan RAG belum tersedia sebagai endpoint runtime Gemini;
+endpoint terkait di ai-service mengembalikan HTTP 501. Pipeline RAG offline
+berjalan terpisah dari runtime — lihat
+[docs/runbooks/rag-pipeline.md](docs/runbooks/rag-pipeline.md). Tidak ada
+fallback ke DeepSeek, OpenAI, Anthropic, atau Ollama. Source provider lama hanya
+disimpan sebagai arsip dan tidak dikompilasi.
 
 Setelah mengisi key, terapkan perubahan binary Brain dan AI:
 
@@ -252,6 +263,20 @@ docker compose --profile services up -d --build --wait
 
 Tes mock HTTP dijalankan melalui `cargo test -p ai-service`; tes tersebut tidak
 menghubungi Gemini atau membuktikan bahwa API key memiliki akses model vision.
+
+## RAG Offline
+
+Retrieval-augmented generation belum menjadi endpoint runtime. Di luar runtime
+tersedia pipeline offline untuk menyiapkan korpus:
+
+- `tools/rag-crawler` — crawler dokumen web → `dataset/agrisense_rag_pool.jsonl`
+- `scripts/download_*.py` — unduh dataset terbuka (Badan Pangan, data.go.id, SatuData Pertanian)
+- `scripts/rag_ingest.py` — ekstraksi, chunk, embedding `nomic-embed-text` (Ollama, 768 dim) → `agronomy.rag_documents`
+- `scripts/rag_server.py` — sidecar HTTP `:8000` untuk pencarian
+- `test-llm/` — playground LLM lokal (Ollama/LM Studio/llama.cpp) dengan toggle RAG
+
+`dataset/` dan `runtime/` tidak di-commit. Prasyarat dan alur lengkap:
+[docs/runbooks/rag-pipeline.md](docs/runbooks/rag-pipeline.md).
 
 ## Database Design
 
@@ -265,6 +290,10 @@ finance     -- finance-service (transactions, credit scores, loans)
 ai          -- brain + ai-service (conversations, agent runs)
 analytics   -- analytics-service (trends, aggregates — future B2B)
 ```
+
+`agronomy.rag_documents` (migrasi `202609220001`) menyimpan korpus RAG hasil
+ingest offline (embedding 768-dimensi, index HNSW); service runtime hanya
+memegang `SELECT`.
 
 Cross-domain communication = events, **bukan JOINs**.
 
@@ -333,13 +362,15 @@ make k8s-apply-staging  # Deploy ke staging
 | [002](docs/architecture/adr/002-mcp-protocol.md) | MCP as integration protocol |
 | [003](docs/architecture/adr/003-whatsapp-first.md) | WhatsApp First |
 | [004](docs/architecture/adr/004-nats-over-kafka.md) | NATS JetStream over Kafka |
+| [005](docs/architecture/adr/005-communication-patterns.md) | Pola komunikasi sinkron vs asinkron |
+| [006](docs/architecture/adr/006-outbox-pattern.md) | Transactional outbox |
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
 | Language | Rust (Axum, tokio, sqlx) |
-| AI | Gemini 3.6 Flash text + vision; ElevenLabs voice; RAG deferred |
+| AI | Gemini 3.6 Flash text + vision; ElevenLabs voice; RAG offline (Ollama + pgvector, di luar runtime) |
 | Protocol | MCP (Model Context Protocol) |
 | Database | PostgreSQL + pgvector |
 | Cache | Redis |
