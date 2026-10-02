@@ -7,6 +7,7 @@ COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY apps ./apps
 COPY services ./services
 COPY packages ./packages
+COPY tools ./tools
 COPY infrastructure/postgres/migrations ./infrastructure/postgres/migrations
 
 RUN cargo build --locked --release --workspace --bins

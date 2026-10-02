@@ -1,6 +1,6 @@
 # Rust
+# Cargo.lock is committed on purpose: the Dockerfile builds with `--locked`.
 target/
-Cargo.lock
 *.pdb
 
 # Node.js
@@ -42,9 +42,6 @@ coverage/
 lcov.info
 tarpaulin-report.html
 
-# Docker
-.dockerignore
-
 # Logs
 *.log
 logs/
@@ -58,6 +55,16 @@ kubeconfig
 *.tfstate
 *.tfstate.backup
 Pulumi.*.yaml
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# RAG data pipelines — re-downloadable / generated, never commit
+dataset/
+runtime/
 
 # Temporary
 tmp/

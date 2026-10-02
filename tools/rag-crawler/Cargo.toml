@@ -1,0 +1,17 @@
+[package]
+name        = "rag-crawler"
+version.workspace     = true
+edition.workspace     = true
+authors.workspace     = true
+
+[[bin]]
+name = "rag-crawler"
+path = "src/main.rs"
+
+[dependencies]
+tokio        = { workspace = true }
+reqwest      = { workspace = true }
+serde        = { workspace = true }
+serde_json   = { workspace = true }
+md5          = { workspace = true }
+rand         = { workspace = true }

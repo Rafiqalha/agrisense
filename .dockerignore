@@ -1,0 +1,13 @@
+.git
+.env
+target
+coverage
+**/.next
+**/node_modules
+**/__pycache__
+*.log
+
+# Not needed for the Rust image, and dataset/ is hundreds of MB
+dataset
+runtime
+test-llm
